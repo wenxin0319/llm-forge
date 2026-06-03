@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/lib/auth';
+import { useAuth, mockLogin } from '@/lib/auth';
 import api from '@/api/client';
 
 export default function LoginPage() {
@@ -14,17 +14,25 @@ export default function LoginPage() {
   const handle = async () => {
     setLoading(true);
     setError('');
+
+    // Try mock credentials first — works without any backend
+    if (mode === 'login') {
+      const mock = mockLogin(form.email, form.password);
+      if (mock) { login(mock.token, mock.user); setLoading(false); return; }
+    }
+
     try {
       const url = mode === 'login' ? '/auth/login' : '/auth/register';
       const { data } = await api.post(url, form);
       login(data.token, data.user);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      setError(err.response?.data?.message || 'Something went wrong');
+      setError(err.response?.data?.message || 'No backend running — use the demo account below');
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-primary)' }}>
@@ -77,6 +85,33 @@ export default function LoginPage() {
           <button className="btn btn-primary w-full" onClick={handle} disabled={loading}>
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
+
+          {mode === 'login' && (
+            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>Demo Accounts</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { email: 'demo@llmforge.ai', password: 'demo1234', label: 'Demo User' },
+                  { email: 'cwx0319@gmail.com', password: 'demo1234', label: 'Wenxin C.' },
+                ].map((cred) => (
+                  <button
+                    key={cred.email}
+                    type="button"
+                    onClick={() => setForm((p) => ({ ...p, email: cred.email, password: cred.password }))}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 6, background: 'var(--bg-card)', border: '1px solid var(--border-light)', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-light)')}
+                  >
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>{cred.label}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{cred.email}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>
+                Password for all demo accounts: <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>demo1234</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--text-muted)' }}>

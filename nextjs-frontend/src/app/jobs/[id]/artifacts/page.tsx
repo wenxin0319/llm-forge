@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Download, Zap, Copy, Check, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/api/client';
+import { getMockJob, getMockArtifacts, type MockJob } from '@/lib/mockStore';
 
 interface Artifact {
   id: string;
@@ -43,7 +44,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function ArtifactCard({ artifact, onQuantize }: { artifact: Artifact; onQuantize: (id: string, fmt: string) => void }) {
+function ArtifactCard({ artifact, onQuantize, mockCfg }: { artifact: Artifact; onQuantize: (id: string, fmt: string) => void; mockCfg?: MockJob | null }) {
   const meta = FORMAT_META[artifact.format] || { label: artifact.format, desc: '', icon: '📦', color: 'var(--text-muted)' };
   const isQuantizing = artifact.status === 'quantizing';
 
@@ -71,9 +72,15 @@ function ArtifactCard({ artifact, onQuantize }: { artifact: Artifact; onQuantize
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {artifact.downloadUrl && (
-              <a href={artifact.downloadUrl} className="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer">
-                <Download size={12} /> Download
-              </a>
+              mockCfg ? (
+                <button className="btn btn-primary btn-sm" onClick={() => downloadModelCard(artifact, mockCfg)}>
+                  <Download size={12} /> Download (demo)
+                </button>
+              ) : (
+                <a href={artifact.downloadUrl} className="btn btn-primary btn-sm" target="_blank" rel="noopener noreferrer">
+                  <Download size={12} /> Download
+                </a>
+              )
             )}
             {artifact.format === 'merged' && (
               <>
@@ -131,13 +138,53 @@ function ChatWidget({ modelName }: { modelName: string }) {
   );
 }
 
+function downloadModelCard(artifact: Artifact, mockCfg: MockJob) {
+  const card = {
+    model_name: mockCfg.modelName,
+    base_model: 'llama-3-8b',
+    training_method: mockCfg.method.toUpperCase(),
+    format: artifact.format,
+    size_gb: artifact.fileSizeGb,
+    epochs: mockCfg.totalEpochs,
+    train_loss: 0.847,
+    val_loss: 0.923,
+    dataset: mockCfg.datasetName,
+    gpu: mockCfg.gpuType,
+    cost_usd: +(mockCfg.estimatedCostUsd * 0.96).toFixed(2),
+    created_at: new Date().toISOString(),
+    demo_note: 'This is a model card demo. In production, this download would contain the actual model weights.',
+    usage: artifact.format === 'gguf'
+      ? `ollama run ${mockCfg.modelName.toLowerCase().replace(/\s+/g, '-')}`
+      : `from transformers import AutoModelForCausalLM\nmodel = AutoModelForCausalLM.from_pretrained("./${mockCfg.modelName.replace(/\s+/g, '_')}")`,
+  };
+  const blob = new Blob([JSON.stringify(card, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${mockCfg.modelName.replace(/\s+/g, '_')}_${artifact.format}_model_card.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ArtifactsPage() {
   const { id } = useParams<{ id: string }>();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mockCfg, setMockCfg] = useState<MockJob | null>(null);
+  const isMock = id?.startsWith('mock-');
 
   const load = async () => {
+    if (isMock) {
+      const cfg = getMockJob(id);
+      if (cfg) {
+        setMockCfg(cfg);
+        setJob({ id, modelName: cfg.modelName, status: 'completed', trainLoss: 0.847, actualCostUsd: +(cfg.estimatedCostUsd * 0.96).toFixed(2) });
+        setArtifacts(getMockArtifacts(cfg) as Artifact[]);
+      }
+      setLoading(false);
+      return;
+    }
     try {
       const [jobRes, artRes] = await Promise.all([api.get(`/jobs/${id}`), api.get('/artifacts', { params: { jobId: id } })]);
       setJob(jobRes.data);
@@ -148,15 +195,17 @@ export default function ArtifactsPage() {
 
   useEffect(() => {
     load();
-    const hasQuantizing = artifacts.some((a) => a.status === 'quantizing');
-    if (hasQuantizing) {
-      const t = setInterval(load, 3000);
-      return () => clearInterval(t);
+    if (!isMock) {
+      const hasQuantizing = artifacts.some((a) => a.status === 'quantizing');
+      if (hasQuantizing) {
+        const t = setInterval(load, 3000);
+        return () => clearInterval(t);
+      }
     }
-  }, [id, artifacts.some((a) => a.status === 'quantizing')]);
+  }, [id]);
 
   const handleQuantize = async (artifactId: string, format: string) => {
-    await api.post(`/artifacts/${artifactId}/quantize`, { format });
+    if (!isMock) await api.post(`/artifacts/${artifactId}/quantize`, { format });
     load();
   };
 
@@ -191,7 +240,7 @@ export default function ArtifactsPage() {
         ) : (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16, marginBottom: 28 }}>
-              {artifacts.map((a) => <ArtifactCard key={a.id} artifact={a} onQuantize={handleQuantize} />)}
+              {artifacts.map((a) => <ArtifactCard key={a.id} artifact={a} onQuantize={handleQuantize} mockCfg={mockCfg} />)}
             </div>
 
             <div className="card mb-4">

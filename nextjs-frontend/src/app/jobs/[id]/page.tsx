@@ -6,6 +6,7 @@ import { XCircle, Package, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import Link from 'next/link';
 import api from '@/api/client';
+import { getMockJob, getMockProgress, getMockMetrics, getMockLogs } from '@/lib/mockStore';
 import type { TrainingJob } from '@/types';
 
 interface MetricPoint { step: number; epoch: number; trainLoss: number; valLoss: number; tokensPerSec: number }
@@ -31,8 +32,41 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
+  const isMock = id?.startsWith('mock-');
 
   useEffect(() => {
+    if (isMock) {
+      // Mock mode: build job state from local store + elapsed time
+      const mockCfg = getMockJob(id);
+      if (!mockCfg) { setLoading(false); return; }
+
+      const refresh = () => {
+        const { pct, status, epoch, trainLoss, valLoss, done } = getMockProgress(mockCfg);
+        setJob({
+          id, modelId: id, modelName: mockCfg.modelName, baseModelId: id,
+          datasetId: 'mock-ds', datasetName: mockCfg.datasetName,
+          status, progress: pct, currentEpoch: epoch, totalEpochs: mockCfg.totalEpochs,
+          trainLoss, valLoss,
+          gpuVramGb: mockCfg.gpuVramGb, gpuTflops: mockCfg.gpuTflops,
+          estimatedHours: 1.2, estimatedCostUsd: mockCfg.estimatedCostUsd,
+          actualCostUsd: done ? +(mockCfg.estimatedCostUsd * 0.96).toFixed(2) : undefined,
+          logs: getMockLogs(mockCfg),
+          startedAt: mockCfg.startedAt,
+          completedAt: done ? new Date(new Date(mockCfg.startedAt).getTime() + 40_000).toISOString() : undefined,
+          createdAt: mockCfg.createdAt,
+        });
+        setMetrics(getMockMetrics(mockCfg) as MetricPoint[]);
+        setTick((p) => p + 1);
+        if (done) clearInterval(timer);
+      };
+
+      setLoading(false);
+      refresh();
+      const timer = setInterval(refresh, 1500);
+      return () => clearInterval(timer);
+    }
+
+    // Real API mode
     const load = async () => {
       try {
         const [jobRes, metricsRes] = await Promise.all([api.get(`/jobs/${id}`), api.get(`/jobs/${id}/metrics`)]);
@@ -52,7 +86,7 @@ export default function JobDetailPage() {
 
   const handleCancel = async () => {
     if (!confirm('Cancel this job?')) return;
-    await api.post(`/jobs/${id}/cancel`);
+    if (!isMock) await api.post(`/jobs/${id}/cancel`);
     setJob((j) => j ? { ...j, status: 'cancelled' } : j);
   };
 

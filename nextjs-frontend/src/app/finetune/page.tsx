@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, ChevronRight, ChevronLeft, Zap, DollarSign, Cpu, Settings2 } from 'lucide-react';
 import api from '@/api/client';
+import { saveMockJob } from '@/lib/mockStore';
 
 interface SelectedModel { id: string; name: string; params: string; vramRequiredGb: { qlora: number; lora: number; full: number }; supportedMethods: string[] }
 
@@ -105,7 +106,6 @@ export default function FinetunePage() {
   const handleLaunch = async () => {
     setLaunching(true);
     try {
-      // Upload dataset if not already uploaded
       let dsId = uploadedDatasetId;
       if (!dsId && file) {
         const fd = new FormData();
@@ -116,29 +116,29 @@ export default function FinetunePage() {
         dsId = dsRes.data.id;
         setUploadedDatasetId(dsId);
       }
-
       const res = await api.post('/training/launch', {
-        modelId: model?.id || 'custom',
-        baseModelId: model?.id,
-        datasetId: dsId,
-        method,
-        gpuType,
-        gpuCount,
-        epochs,
-        batchSize,
-        learningRate: lr,
-        loraRank,
-        maxSeqLength: maxSeqLen,
-        outputFormat,
-        useFlashAttention: true,
-        useGradientCheckpointing: true,
+        modelId: model?.id || 'custom', baseModelId: model?.id, datasetId: dsId,
+        method, gpuType, gpuCount, epochs, batchSize, learningRate: lr,
+        loraRank, maxSeqLength: maxSeqLen, outputFormat,
+        useFlashAttention: true, useGradientCheckpointing: true,
       });
-
       router.push(`/jobs/${res.data.id}`);
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } };
-      alert(err.response?.data?.message || 'Failed to launch');
-      setLaunching(false);
+    } catch {
+      // No backend — run in demo mode
+      const g = GPU_TIERS.find((x) => x.id === gpuType)!;
+      const mockId = `mock-${Date.now()}`;
+      saveMockJob({
+        id: mockId,
+        modelName: model?.name || 'My Fine-tuned Model',
+        datasetName: datasetName || file?.name || 'training-data',
+        method, outputFormat, gpuType,
+        gpuVramGb: g.vram, gpuTflops: g.tflops,
+        estimatedCostUsd: estimatedCost,
+        totalEpochs: epochs,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+      router.push(`/jobs/${mockId}`);
     }
   };
 
