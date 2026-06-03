@@ -10,8 +10,11 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
 
-  app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true });
-  app.setGlobalPrefix('api/v1');
+  app.enableCors({
+    origin: ['http://localhost:3000', 'http://localhost:5173', process.env.FRONTEND_URL].filter(Boolean),
+    credentials: true,
+  });
+  app.setGlobalPrefix('api/v1', { exclude: ['/'] });
 
   const config = new DocumentBuilder()
     .setTitle('LLM Forge API')
