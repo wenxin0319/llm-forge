@@ -1,0 +1,9 @@
+node_modules
+dist
+frontend
+nextjs-frontend
+uploads
+.env
+.env.local
+*.md
+.git

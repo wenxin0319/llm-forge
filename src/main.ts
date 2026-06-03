@@ -10,8 +10,22 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
 
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean) as string[];
+
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:5173', process.env.FRONTEND_URL].filter(Boolean),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, Swagger)
+      if (!origin) return callback(null, true);
+      // Allow any vercel.app or railway.app subdomain in production
+      if (allowedOrigins.includes(origin) || /\.(vercel\.app|railway\.app)$/.test(origin)) {
+        return callback(null, true);
+      }
+      callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   });
   app.setGlobalPrefix('api/v1', { exclude: ['/'] });
