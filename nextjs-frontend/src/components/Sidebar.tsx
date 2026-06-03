@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2 } from 'lucide-react';
+import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2, Stethoscope, Tag, ClipboardList, ListChecks } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 const NAV = [
@@ -13,6 +13,12 @@ const NAV = [
     { href: '/datasets', icon: Database, label: 'Datasets' },
     { href: '/models', icon: Box, label: 'My Models' },
     { href: '/training', icon: Zap, label: 'Training Jobs' },
+    { href: '/jobs', icon: ListChecks, label: 'All Jobs' },
+  ]},
+  { label: 'Medical', items: [
+    { href: '/emr', icon: Stethoscope, label: 'EMR Workspace' },
+    { href: '/emr/annotate', icon: Tag, label: 'Annotation' },
+    { href: '/emr/cases', icon: ClipboardList, label: 'Case Explorer' },
   ]},
   { label: 'Infrastructure', items: [
     { href: '/gpu-cluster', icon: Cpu, label: 'GPU Cluster' },
