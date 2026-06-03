@@ -12,7 +12,7 @@ function StatusBadge({ status }: { status: TrainingJob['status'] }) {
 
 function JobRow({ job, onCancel }: { job: TrainingJob; onCancel: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const isActive = job.status === 'running' || job.status === 'initializing';
+  const isActive = job.status === 'training' || job.status === 'preprocessing' || job.status === 'packaging';
   return (
     <>
       <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded((p) => !p)}>

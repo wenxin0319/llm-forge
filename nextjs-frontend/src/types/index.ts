@@ -39,9 +39,10 @@ export interface TrainingJob {
   id: string;
   modelId: string;
   modelName: string;
+  baseModelId?: string;
   datasetId: string;
   datasetName: string;
-  status: 'queued' | 'initializing' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'preprocessing' | 'training' | 'packaging' | 'completed' | 'failed' | 'cancelled';
   progress: number;
   currentEpoch: number;
   totalEpochs: number;

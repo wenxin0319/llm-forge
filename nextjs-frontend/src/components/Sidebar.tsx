@@ -2,14 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 const NAV = [
   { label: 'Platform', items: [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/catalog', icon: BookOpen, label: 'Model Catalog' },
+    { href: '/finetune', icon: Wand2, label: 'Fine-tune' },
     { href: '/datasets', icon: Database, label: 'Datasets' },
-    { href: '/models', icon: Box, label: 'Models' },
+    { href: '/models', icon: Box, label: 'My Models' },
     { href: '/training', icon: Zap, label: 'Training Jobs' },
   ]},
   { label: 'Infrastructure', items: [
@@ -43,7 +45,7 @@ export default function Sidebar() {
               <Link
                 key={href}
                 href={href}
-                className={`nav-item${pathname === href ? ' active' : ''}`}
+                className={`nav-item${pathname === href || (href !== '/' && pathname.startsWith(href)) ? ' active' : ''}`}
               >
                 <Icon size={15} />
                 {label}

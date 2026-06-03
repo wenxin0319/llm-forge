@@ -25,7 +25,7 @@ export default function DashboardPage() {
 
   useEffect(() => { api.get('/jobs').then((r) => setJobs(r.data)).catch(() => {}); }, []);
 
-  const activeJobs = jobs.filter((j) => j.status === 'running' || j.status === 'initializing');
+  const activeJobs = jobs.filter((j) => j.status === 'training' || j.status === 'preprocessing');
   const completedJobs = jobs.filter((j) => j.status === 'completed');
   const totalSpent = jobs.reduce((s, j) => s + (j.actualCostUsd || j.estimatedCostUsd), 0);
 

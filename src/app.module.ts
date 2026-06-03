@@ -9,6 +9,8 @@ import { ModelsModule } from './models/models.module';
 import { TrainingModule } from './training/training.module';
 import { JobsModule } from './jobs/jobs.module';
 import { GpuMetricsModule } from './gpu-metrics/gpu-metrics.module';
+import { ModelCatalogModule } from './model-catalog/model-catalog.module';
+import { ArtifactsModule } from './artifacts/artifacts.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { GpuMetricsModule } from './gpu-metrics/gpu-metrics.module';
     TrainingModule,
     JobsModule,
     GpuMetricsModule,
+    ModelCatalogModule,
+    ArtifactsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

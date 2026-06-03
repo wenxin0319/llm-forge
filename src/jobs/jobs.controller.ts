@@ -22,6 +22,12 @@ export class JobsController {
     return this.jobsService.findOne(id, req.user.id);
   }
 
+  @Get(':id/metrics')
+  @ApiOperation({ summary: 'Get training metrics time-series (loss, lr, throughput)' })
+  getMetrics(@Param('id') id: string, @Request() req) {
+    return this.jobsService.getMetrics(id, req.user.id);
+  }
+
   @Post(':id/cancel')
   @ApiOperation({ summary: 'Cancel a running job' })
   cancel(@Param('id') id: string, @Request() req) {
