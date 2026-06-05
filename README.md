@@ -1,111 +1,158 @@
 # LLM Forge
 
-> Open-source self-serve platform for fine-tuning customized, lightweight LLMs on your own data — with GPU acceleration, parallel training, one-click model delivery, and a clinical EMR annotation workspace.
+> Build your own AI model — no PhD required. Upload your data, pick a model, and get a production-ready custom LLM in minutes.
 
+[![Live Demo](https://img.shields.io/badge/Try%20it%20live-llm--forge--azure.vercel.app-brightgreen)](https://llm-forge-azure.vercel.app/)
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Node](https://img.shields.io/badge/node-20%2B-brightgreen)
-![NestJS](https://img.shields.io/badge/backend-NestJS-e0234e)
-![Next.js](https://img.shields.io/badge/frontend-Next.js%2015-black)
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://llm-forge-azure.vercel.app/)
 
-**Live demo:** [https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)
+**Live at:** [https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)
 
 ---
 
-## What it does
+## What can I do with LLM Forge?
 
-LLM Forge combines two things in one platform:
+LLM Forge lets you take a powerful open-source AI model and train it on your own data — so it speaks your language, knows your domain, and works the way you need it to.
 
-### LLM Fine-tuning
-1. **Browse the model catalog** — 14 curated open-source models (Llama 4, Mistral, Phi-4, DeepSeek-R1, and more) with specs, VRAM requirements, and license info
-2. **Upload your dataset** — JSONL, CSV, Parquet, or plain text; drag-and-drop with format auto-detection and column mapping
-3. **Launch a fine-tuning job** — pick QLoRA / LoRA / Full / DPO, configure GPU tier and hyperparameters, watch live loss curves
-4. **Download your model** — adapter weights, merged FP16, GGUF (Ollama-ready), or GPTQ INT4
+**Common use cases:**
+- Fine-tune a medical AI on your clinical notes
+- Train a customer support bot on your product documentation
+- Build a coding assistant specialized for your codebase
+- Create a multilingual assistant trained on your content
 
-### Clinical EMR Workspace
-- **Case Explorer** — browse and filter patient cases by status, condition, and priority
-- **Annotation Tool** — highlight clinical entities (diagnoses, medications, procedures, lab results) in medical documents with AI-assisted pre-annotations and confidence scores
-- **Document Browser** — view admission notes, discharge summaries, and clinical reports side by side
-
-> **No backend required for demos** — the frontend includes a full offline mock mode with demo accounts, simulated training progress, and sample EMR data.
+No GPU setup. No infrastructure. Just upload, configure, and launch.
 
 ---
 
-## Project structure
+## How to use it — tab by tab
 
-```
-llm-forge/
-├── src/                          # NestJS backend (port 3001)
-│   ├── auth/                     # JWT authentication
-│   ├── users/                    # Accounts & GPU quota tracking
-│   ├── model-catalog/            # 14 open-source model definitions + search/filter
-│   ├── datasets/                 # Multipart upload, format detection, preprocessing
-│   ├── models/                   # User model configurations
-│   ├── training/                 # Fine-tune job launch & cost estimation
-│   ├── jobs/                     # Job lifecycle, per-step metrics, log streaming
-│   ├── artifacts/                # Model outputs (adapter, merged, GGUF, GPTQ) + quantization
-│   └── gpu-metrics/              # 20-node cluster utilization simulation
-└── nextjs-frontend/              # Next.js 15 App Router UI (port 3000)
-    └── src/
-        ├── lib/
-        │   ├── auth.tsx          # JWT auth context + mock login for demo mode
-        │   └── mockStore.ts      # LocalStorage-based job store (no backend needed)
-        └── app/
-            ├── page.tsx          # Dashboard — charts, recent jobs
-            ├── catalog/          # Model browser — filters, detail drawer, compare modal
-            ├── finetune/         # 3-step wizard: dataset → config → launch
-            ├── jobs/             # All jobs list
-            ├── jobs/[id]/        # Live training monitor — loss curves, logs, throughput
-            ├── jobs/[id]/artifacts/ # Download center — GGUF/GPTQ, chat widget, API key
-            ├── emr/              # EMR case list and document browser
-            ├── emr/annotate/     # Clinical entity annotation tool
-            ├── emr/cases/        # Case explorer with filters
-            ├── datasets/         # Dataset management
-            ├── models/           # Saved model configurations
-            ├── gpu-cluster/      # Real-time GPU node grid
-            └── settings/         # Account & API access
-```
+### 1. Model Catalog
+**Start here.** Browse 14 curated open-source models — from small (7B, runs on a laptop) to powerful (70B+, frontier-quality). Each card shows:
+- How much memory (VRAM) it needs
+- What it's best at (chat, coding, reasoning, multilingual)
+- Its license (Apache 2.0, MIT, or Meta Community)
+
+Click **"Fine-tune this model"** on any card to begin.
+
+> **Not sure which to pick?** Mistral 7B is a great starting point — fast, free, and works well on most tasks.
 
 ---
 
-## Getting started
+### 2. Datasets
+**Upload your training data here.** Drag and drop a file — LLM Forge auto-detects the format.
 
-### Quickest — use the live deployment
-
-Visit **[https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)** and sign in with a demo account — no setup required.
-
-| Email | Password |
+| Format | When to use |
 |---|---|
-| `demo@llmforge.ai` | `demo1234` |
-| `cwx0319@gmail.com` | `demo1234` |
+| **JSONL** | Instruction/answer pairs, chat conversations |
+| **CSV** | Structured data with rows and columns |
+| **Plain text (.txt)** | Documents, articles, clinical notes |
+| **Parquet** | Large datasets exported from data pipelines |
 
-### Run locally (no backend needed)
+**Sample datasets to try** (in `sample-datasets/emr/`):
+- `clinical-notes.jsonl` — 8 clinical NLP examples (instruction → output format)
+- `patient-records.csv` — 15 fictional patient records
+- `discharge-summaries.txt` — 3 full hospital discharge documents
+- `medication-events.jsonl` — 6 pharmacist assistant training examples
 
+Once uploaded, your dataset appears in the table with its size, record count, and status.
+
+---
+
+### 3. Fine-tune (3-step wizard)
+
+**Step 1 — Pick your dataset**
+Select the file you uploaded. LLM Forge previews the first few rows so you can confirm it looks right.
+
+**Step 2 — Configure training**
+- **Method:** QLoRA is recommended for most people — uses 75% less GPU memory with minimal quality loss
+- **GPU tier:** Choose based on your model size and budget
+- **Epochs, learning rate, batch size:** Defaults work well; advanced users can tune these
+
+The cost estimator shows you what the run will cost before you launch.
+
+**Step 3 — Review & Launch**
+See a summary of everything, then click **Launch Fine-tune**. You'll be taken directly to the live training monitor.
+
+---
+
+### 4. Training Monitor (Jobs)
+**Watch your model train in real time.** The monitor shows:
+- **Loss curve** — the model's error rate dropping over time (lower = better)
+- **Live logs** — step-by-step output from the training process
+- **GPU utilization** — how hard the cluster is working
+- **Epoch progress** — how far through training you are
+
+Training typically takes 10–60 minutes depending on dataset size and model. You'll get a notification when it's done.
+
+---
+
+### 5. Model Artifacts (Download)
+**Your finished model lives here.** After training completes, you'll see download options:
+
+| Format | What it is | Run with |
+|---|---|---|
+| **Adapter weights** | Small patch on top of the base model | Merge at inference time |
+| **Merged FP16** | Full model, ready to serve | Any inference server |
+| **GGUF Q4_K_M** | Compressed for local use | Ollama, LM Studio |
+| **GPTQ INT4** | GPU-optimized quantization | vLLM, TGI |
+
+Click **Quantize to GGUF** to convert your model for Ollama in one click.
+
+---
+
+### 6. GPU Cluster
+**See what's running under the hood.** A live grid of 20 GPU nodes — you can see which ones are handling your jobs, their current utilization, memory usage, and temperature. No action needed here; it's for visibility.
+
+---
+
+### 7. Settings
+**Manage your account and API access.** Copy your API key here to call your trained model from your own application.
+
+---
+
+### 8. Admin Panel *(admin accounts only)*
+**Wenxin Cheng's view.** Lists all registered users, their plans, GPU quota usage, and when they joined. Accessible at `/admin`.
+
+---
+
+## Try it now — no setup needed
+
+Visit **[https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)** and sign in:
+
+| Account | Email | Password |
+|---|---|---|
+| Demo user | `demo@llmforge.ai` | `demo1234` |
+| Admin | `cwx0319@gmail.com` | `demo1234` |
+
+The demo works without a backend — training jobs simulate real progress, loss curves animate, and the EMR dataset is pre-loaded.
+
+---
+
+## Run it yourself
+
+### Frontend only (demo mode — no backend needed)
 ```bash
 git clone https://github.com/wenxin0319/llm-forge.git
 cd llm-forge/nextjs-frontend
 npm install
 npm run dev
 # Open http://localhost:3000
-# Login with: demo@llmforge.ai / demo1234
 ```
 
-The frontend runs fully in demo mode — training jobs simulate real progress, loss curves animate, and EMR data is pre-loaded.
-
-### Run with the full backend
-
+### Full stack (real accounts, real uploads, real jobs)
 ```bash
+# Start Postgres
+docker run -d --name llmforge-db \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=llmforge \
+  -p 5432:5432 postgres:16-alpine
+
 # Terminal 1 — Backend
 cd llm-forge
-cp .env.example .env
 npm install
 npm run start:dev
-# API:   http://localhost:3001
-# Docs:  http://localhost:3001/api/docs
+# API: http://localhost:3001  |  Docs: http://localhost:3001/api/docs
 
 # Terminal 2 — Frontend
 cd llm-forge/nextjs-frontend
-cp .env.example .env.local
 npm install
 npm run dev
 # UI: http://localhost:3000
@@ -113,167 +160,40 @@ npm run dev
 
 ---
 
-## Environment variables
-
-**Backend `.env`**
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3001` | API server port |
-| `JWT_SECRET` | `llmforge-dev-secret` | Change in production |
-| `FRONTEND_URL` | `http://localhost:3000` | CORS allowed origin |
-
-**Frontend `nextjs-frontend/.env.local`**
-
-| Variable | Default | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:3001/api/v1` | Backend API base URL |
-
----
-
-## Model catalog
-
-14 curated open-source models across all major families:
-
-| Model | Active Params | Context | License | Best for |
-|---|---|---|---|---|
-| Llama 3.1 8B Instruct | 8B | 128K | Meta Community | Chat, instruction, fine-tuning baseline |
-| Llama 3.1 70B Instruct | 70B | 128K | Meta Community | High-quality reasoning, production |
-| Llama 4 Scout | 17B (MoE) | 10M | Llama 4 | Ultra-long context RAG |
-| Mistral 7B Instruct v0.3 | 7.3B | 32K | Apache 2.0 | Budget fine-tuning on single GPU |
-| Mistral Small 4 | 6.5B (MoE) | 256K | Apache 2.0 | Function calling, chatbots |
-| Phi-4 | 14B | 16K | MIT | Reasoning, code, low-VRAM |
-| Phi-4-reasoning | 14B | 32K | MIT | Math, multi-step problem solving |
-| Gemma 4 26B-A4B | 3.8B (MoE) | 256K | Apache 2.0 | Private docs, offline agents |
-| Qwen2.5-7B Instruct | 7B | 128K | Apache 2.0 | Multilingual, Asian-language apps |
-| Qwen3-235B-A22B | 22B (MoE) | 256K | Apache 2.0 | Frontier-quality multilingual |
-| DeepSeek-R1 | 37B (MoE) | 128K | MIT | Chain-of-thought, math |
-| DeepSeek-R1-Distill-Qwen-7B | 7B | 128K | MIT | Affordable local reasoning |
-| Falcon 40B | 40B | 2K | Apache 2.0 | Research baseline |
-| Yi-34B-Chat | 34B | 4K | Apache 2.0 | Bilingual Chinese/English |
-
----
-
-## Fine-tuning methods
-
-| Method | VRAM savings | Quality | Best for |
-|---|---|---|---|
-| **QLoRA** *(recommended)* | ~75% | 80–90% of full FT | Consumer or cloud GPUs, most use cases |
-| **LoRA** | ~40% | 90–95% of full FT | Higher quality when VRAM allows |
-| **Full fine-tune** | None | 100% | Maximum quality, large clusters |
-| **DPO** | ~75% (with QLoRA) | +5–15 ELO vs SFT | Aligning model behavior with preferences |
-
----
-
-## Output formats
-
-| Format | Typical size | Run with |
-|---|---|---|
-| Adapter only | ~30 MB | Merge with base at inference time |
-| Merged FP16 | 4–70 GB | Any FP16-compatible inference server |
-| GGUF Q4\_K\_M | 1–20 GB | Ollama, LM Studio, llama.cpp |
-| GPTQ INT4 | 1–20 GB | vLLM, text-generation-inference |
-
----
-
-## GPU cluster
-
-Simulates a 20-node heterogeneous cluster with live utilization metrics:
-
-| Node type | Count | VRAM | TFLOPs | NVLink |
-|---|---|---|---|---|
-| H100 SXM5 80GB | 4 | 80 GB | 989 | 900 GB/s |
-| A100 SXM4 80GB | 8 | 80 GB | 312 | 600 GB/s |
-| A100 SXM4 40GB | 8 | 40 GB | 312 | — |
-
----
-
-## API reference
-
-Full interactive docs at `http://localhost:3001/api/docs` (Swagger UI).
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/register` | — | Create account |
-| `POST` | `/api/v1/auth/login` | — | Login, receive JWT |
-| `GET` | `/api/v1/auth/me` | ✓ | Current user profile |
-| `GET` | `/api/v1/catalog` | — | Browse model catalog |
-| `GET` | `/api/v1/catalog/:id` | — | Model details & VRAM requirements |
-| `POST` | `/api/v1/datasets` | ✓ | Upload dataset (multipart, up to 5 GB) |
-| `GET` | `/api/v1/datasets` | ✓ | List datasets |
-| `DELETE` | `/api/v1/datasets/:id` | ✓ | Delete a dataset |
-| `POST` | `/api/v1/training/launch` | ✓ | Launch a fine-tuning job |
-| `GET` | `/api/v1/jobs` | ✓ | List all jobs |
-| `GET` | `/api/v1/jobs/:id` | ✓ | Job status, logs, and config |
-| `GET` | `/api/v1/jobs/:id/metrics` | ✓ | Per-step loss, LR, and throughput |
-| `POST` | `/api/v1/jobs/:id/cancel` | ✓ | Cancel a running job |
-| `GET` | `/api/v1/artifacts` | ✓ | List model artifacts |
-| `GET` | `/api/v1/artifacts/:id` | ✓ | Artifact metadata + pre-signed download URL |
-| `POST` | `/api/v1/artifacts/:id/quantize` | ✓ | Trigger async GGUF / GPTQ quantization |
-| `DELETE` | `/api/v1/artifacts/:id` | ✓ | Delete an artifact |
-| `GET` | `/api/v1/gpu-metrics/cluster` | ✓ | Full cluster utilization metrics |
-
----
-
-## Deploy
-
-### Current production deployment
+## Deployment
 
 | Service | Platform | URL |
 |---|---|---|
 | Frontend | Vercel | [llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/) |
 | Backend | Railway | Auto-deploys from `main` branch |
 
-Both services deploy automatically on every push to `main`.
+Both deploy automatically on every push to `main`.
 
 ### Deploy your own instance
 
-#### 1. Backend → Railway
+**Backend → Railway**
+1. New Project → Deploy from GitHub → select `wenxin0319/llm-forge`
+2. Add variables: `JWT_SECRET`, `FRONTEND_URL=https://your-app.vercel.app`
+3. Copy the Railway domain after deploy
 
-1. Go to [railway.app](https://railway.app) → **New Project → Deploy from GitHub** → select `wenxin0319/llm-forge`
-2. Railway detects the `Dockerfile` and builds automatically
-3. Once live: **Settings → Networking → Generate Domain** — copy your Railway URL
-4. **Variables → Add**:
-   ```
-   JWT_SECRET=<long-random-secret>
-   FRONTEND_URL=https://your-app.vercel.app
-   ```
-
-#### 2. Frontend → Vercel
-
-1. Go to [vercel.com](https://vercel.com) → **Add New Project → Import** → select `wenxin0319/llm-forge`
-2. Set **Root Directory** to `nextjs-frontend`
-3. **Environment Variables → Add**:
-   ```
-   NEXT_PUBLIC_API_URL=https://your-backend.railway.app/api/v1
-   ```
-4. Click **Deploy**
-
-#### 3. Wire them together
-
-Go back to Railway → **Variables** → update `FRONTEND_URL` to your Vercel URL → Railway redeploys automatically.
-
-> **Note:** The frontend works without a backend in demo mode. Only dataset upload, real training jobs, and user accounts require the Railway backend.
+**Frontend → Vercel**
+1. Add New Project → set Root Directory to `nextjs-frontend`
+2. Add variable: `NEXT_PUBLIC_API_URL=https://your-backend.railway.app/api/v1`
+3. Deploy
 
 ---
 
-## Contributing
+## Tech stack
 
-Pull requests are welcome. For major changes please open an issue first.
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 15 (App Router) |
+| Backend | NestJS + TypeORM |
+| Database | PostgreSQL |
+| Auth | JWT (7-day tokens) |
+| Deployment | Vercel + Railway |
 
-```bash
-# Type-check backend
-npx tsc --noEmit --project tsconfig.build.json
-
-# Type-check frontend
-cd nextjs-frontend && npx tsc --noEmit
-
-# Run backend unit tests
-npm run test
-
-# Run e2e tests
-npm run test:e2e
-```
+---
 
 ## License
 
