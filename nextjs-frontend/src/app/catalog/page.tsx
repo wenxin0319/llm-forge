@@ -4,26 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Zap, ExternalLink, X, GitCompare, Star, Download, ChevronRight, Cpu, Layers } from 'lucide-react';
 import api from '@/api/client';
-
-interface CatalogModel {
-  id: string;
-  name: string;
-  params: string;
-  paramsB: number;
-  contextWindow: number;
-  license: string;
-  licenseType: string;
-  useCase: string;
-  huggingfaceId: string;
-  architecture: string;
-  tags: string[];
-  vramRequiredGb: { qlora: number; lora: number; full: number };
-  supportedMethods: string[];
-  isMoE: boolean;
-  activeParams?: string;
-  downloads: number;
-  stars: number;
-}
+import { CATALOG, type CatalogModel } from '@/lib/catalogData';
 
 function fmtCtx(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`;
@@ -305,7 +286,11 @@ export default function CatalogPage() {
   useEffect(() => {
     api.get('/catalog')
       .then((r) => { setModels(r.data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        // Backend unavailable — use the built-in static catalog
+        setModels(CATALOG);
+        setLoading(false);
+      });
   }, []);
 
   const filtered = useMemo(() => {
