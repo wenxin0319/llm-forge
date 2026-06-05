@@ -12,6 +12,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { GpuMetricsModule } from './gpu-metrics/gpu-metrics.module';
 import { ModelCatalogModule } from './model-catalog/model-catalog.module';
 import { ArtifactsModule } from './artifacts/artifacts.module';
+import { AdminModule } from './admin/admin.module';
 import { User } from './users/user.entity';
 import { Dataset } from './datasets/dataset.entity';
 import { LlmModel } from './models/model.entity';
@@ -49,6 +50,7 @@ import { Artifact } from './artifacts/artifact.entity';
     GpuMetricsModule,
     ModelCatalogModule,
     ArtifactsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

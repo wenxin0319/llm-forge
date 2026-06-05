@@ -2,6 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  role: 'user' | 'admin';
   plan: 'free' | 'pro' | 'enterprise';
   gpuQuotaHours: number;
   usedGpuHours: number;

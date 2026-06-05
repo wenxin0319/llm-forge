@@ -10,12 +10,12 @@ const MOCK_USERS: { email: string; password: string; user: User }[] = [
   {
     email: 'demo@llmforge.ai',
     password: 'demo1234',
-    user: { id: 'mock-1', email: 'demo@llmforge.ai', name: 'Demo User', plan: 'pro', gpuQuotaHours: 100, usedGpuHours: 23, createdAt: '2026-01-01' },
+    user: { id: 'mock-1', email: 'demo@llmforge.ai', name: 'Demo User', role: 'user', plan: 'pro', gpuQuotaHours: 100, usedGpuHours: 23, createdAt: '2026-01-01' },
   },
   {
     email: 'cwx0319@gmail.com',
     password: 'demo1234',
-    user: { id: 'mock-2', email: 'cwx0319@gmail.com', name: 'Wenxin C.', plan: 'enterprise', gpuQuotaHours: 500, usedGpuHours: 47, createdAt: '2026-01-01' },
+    user: { id: 'mock-2', email: 'cwx0319@gmail.com', name: 'Wenxin C.', role: 'admin', plan: 'enterprise', gpuQuotaHours: 500, usedGpuHours: 47, createdAt: '2026-01-01' },
   },
 ];
 

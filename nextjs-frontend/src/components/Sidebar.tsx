@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2, Stethoscope, Tag, ClipboardList, ListChecks } from 'lucide-react';
+import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2, Stethoscope, Tag, ClipboardList, ListChecks, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 const NAV = [
@@ -32,6 +32,7 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const isAdmin = (user as any)?.role === 'admin';
 
   return (
     <aside className="sidebar">
@@ -59,13 +60,33 @@ export default function Sidebar() {
             ))}
           </div>
         ))}
+
+        {/* Admin section — only visible to admins */}
+        {isAdmin && (
+          <div>
+            <div className="nav-section-label">Admin</div>
+            <Link
+              href="/admin"
+              className={`nav-item${pathname === '/admin' ? ' active' : ''}`}
+              style={{ color: pathname === '/admin' ? 'var(--warning)' : undefined }}
+            >
+              <ShieldCheck size={15} style={{ color: 'var(--warning)' }} />
+              User Management
+            </Link>
+          </div>
+        )}
       </nav>
 
       {user && (
         <div className="sidebar-user">
-          <div className="user-avatar">{user.name.charAt(0).toUpperCase()}</div>
+          <div className="user-avatar" style={{ background: isAdmin ? 'linear-gradient(135deg,#f59e0b,#ef4444)' : 'linear-gradient(135deg,#4f8ef7,#a78bfa)' }}>
+            {user.name.charAt(0).toUpperCase()}
+          </div>
           <div className="user-info">
-            <div className="user-name">{user.name}</div>
+            <div className="user-name">
+              {user.name}
+              {isAdmin && <span style={{ fontSize: 9, color: 'var(--warning)', marginLeft: 4, fontWeight: 700 }}>ADMIN</span>}
+            </div>
             <div className="user-plan">{user.plan} plan</div>
           </div>
           <button

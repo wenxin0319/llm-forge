@@ -14,6 +14,9 @@ export class User {
   @Column()
   passwordHash: string;
 
+  @Column({ default: 'user' })
+  role: 'user' | 'admin';
+
   @Column({ default: 'free' })
   plan: 'free' | 'pro' | 'enterprise';
 
