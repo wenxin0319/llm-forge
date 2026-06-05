@@ -33,7 +33,10 @@ import { Artifact } from './artifacts/artifact.entity';
       database: process.env.DB_NAME || 'llmforge',
       entities: [User, Dataset, LlmModel, TrainingJob, Artifact],
       synchronize: true, // auto-creates tables — use migrations in production
-      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+      // Only enable SSL for remote databases (Railway/cloud), never for localhost
+      ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1')
+        ? { rejectUnauthorized: false }
+        : false,
       logging: process.env.NODE_ENV === 'development',
     }),
 
