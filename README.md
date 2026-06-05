@@ -6,6 +6,9 @@
 ![Node](https://img.shields.io/badge/node-20%2B-brightgreen)
 ![NestJS](https://img.shields.io/badge/backend-NestJS-e0234e)
 ![Next.js](https://img.shields.io/badge/frontend-Next.js%2015-black)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://llm-forge-azure.vercel.app/)
+
+**Live demo:** [https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)
 
 ---
 
@@ -67,7 +70,16 @@ llm-forge/
 
 ## Getting started
 
-### Try it instantly (no backend needed)
+### Quickest — use the live deployment
+
+Visit **[https://llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/)** and sign in with a demo account — no setup required.
+
+| Email | Password |
+|---|---|
+| `demo@llmforge.ai` | `demo1234` |
+| `cwx0319@gmail.com` | `demo1234` |
+
+### Run locally (no backend needed)
 
 ```bash
 git clone https://github.com/wenxin0319/llm-forge.git
@@ -98,13 +110,6 @@ npm install
 npm run dev
 # UI: http://localhost:3000
 ```
-
-### Demo accounts
-
-| Email | Password | Description |
-|---|---|---|
-| `demo@llmforge.ai` | `demo1234` | General demo account |
-| `cwx0319@gmail.com` | `demo1234` | Admin demo account |
 
 ---
 
@@ -212,20 +217,43 @@ Full interactive docs at `http://localhost:3001/api/docs` (Swagger UI).
 
 ## Deploy
 
-### Vercel + Railway (recommended)
+### Current production deployment
 
-```bash
-# Frontend → Vercel
-cd nextjs-frontend
-npx vercel --prod
+| Service | Platform | URL |
+|---|---|---|
+| Frontend | Vercel | [llm-forge-azure.vercel.app](https://llm-forge-azure.vercel.app/) |
+| Backend | Railway | Auto-deploys from `main` branch |
 
-# Backend → Railway
-# 1. railway.app → New Project → deploy from GitHub (wenxin0319/llm-forge)
-# 2. Railway auto-detects Dockerfile
-# 3. Add env vars: JWT_SECRET, FRONTEND_URL=https://your-app.vercel.app
-```
+Both services deploy automatically on every push to `main`.
 
-Set `NEXT_PUBLIC_API_URL=https://your-backend.railway.app/api/v1` on Vercel.
+### Deploy your own instance
+
+#### 1. Backend → Railway
+
+1. Go to [railway.app](https://railway.app) → **New Project → Deploy from GitHub** → select `wenxin0319/llm-forge`
+2. Railway detects the `Dockerfile` and builds automatically
+3. Once live: **Settings → Networking → Generate Domain** — copy your Railway URL
+4. **Variables → Add**:
+   ```
+   JWT_SECRET=<long-random-secret>
+   FRONTEND_URL=https://your-app.vercel.app
+   ```
+
+#### 2. Frontend → Vercel
+
+1. Go to [vercel.com](https://vercel.com) → **Add New Project → Import** → select `wenxin0319/llm-forge`
+2. Set **Root Directory** to `nextjs-frontend`
+3. **Environment Variables → Add**:
+   ```
+   NEXT_PUBLIC_API_URL=https://your-backend.railway.app/api/v1
+   ```
+4. Click **Deploy**
+
+#### 3. Wire them together
+
+Go back to Railway → **Variables** → update `FRONTEND_URL` to your Vercel URL → Railway redeploys automatically.
+
+> **Note:** The frontend works without a backend in demo mode. Only dataset upload, real training jobs, and user accounts require the Railway backend.
 
 ---
 
