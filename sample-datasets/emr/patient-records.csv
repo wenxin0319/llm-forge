@@ -1,0 +1,16 @@
+patient_id,age,gender,admission_date,discharge_date,primary_diagnosis,secondary_diagnoses,medications,allergies,attending_physician,ward,los_days,outcome
+P001,67,M,2024-01-10,2024-01-15,Acute NSTEMI,"Hypertension; T2DM; CKD stage 3","Aspirin 81mg; Atorvastatin 40mg; Metoprolol 25mg; Lisinopril 10mg",Penicillin,Dr. Chen,CCU,5,Discharged stable
+P002,45,F,2024-01-12,2024-01-14,Community-acquired pneumonia,"None","Ceftriaxone 1g IV; Azithromycin 500mg PO",None,Dr. Patel,Medical,2,Discharged stable
+P003,72,M,2024-01-15,2024-01-22,Hip fracture right femoral neck,"Osteoporosis; Atrial fibrillation; CHF EF 35%","Warfarin 5mg; Furosemide 40mg; Carvedilol 6.25mg",Sulfa,Dr. Johnson,Ortho,7,Discharged to rehab
+P004,38,F,2024-01-18,2024-01-18,Migraine with aura,"Anxiety disorder","Sumatriptan 100mg; Propranolol 40mg",NSAIDS,Dr. Williams,ED,0,Discharged same day
+P005,55,M,2024-01-20,2024-01-28,Septic shock - urinary source,"T2DM; Hypertension; Obesity BMI 38","Piperacillin-tazobactam; Norepinephrine; Insulin drip",None,Dr. Martinez,ICU,8,Discharged stable
+P006,29,F,2024-02-01,2024-02-03,Appendicitis acute,"None","Cefoxitin perioperative",None,Dr. Lee,Surgery,2,Discharged stable
+P007,81,F,2024-02-05,2024-02-14,Stroke ischemic left MCA,"Atrial fibrillation; Hypertension; Hyperlipidemia","Apixaban 5mg BID; Lisinopril 20mg; Rosuvastatin 20mg",Codeine,Dr. Anderson,Neuro,9,Discharged to SNF
+P008,52,M,2024-02-08,2024-02-10,COPD exacerbation,"Smoking history 30 pack-years","Prednisone 40mg; Ipratropium neb; Albuterol neb; Doxycycline 100mg",None,Dr. Thompson,Pulm,2,Discharged stable
+P009,63,F,2024-02-12,2024-02-20,Colorectal cancer sigmoid,"Hypertension; Iron-deficiency anemia","Bevacizumab; FOLFOX; Ondansetron 8mg",None,Dr. Garcia,Oncology,8,Discharged for outpatient chemo
+P010,41,M,2024-02-15,2024-02-16,Diabetic ketoacidosis,"T1DM","Insulin regular drip; Normal saline; Potassium replacement",None,Dr. Wilson,Medical,1,Discharged stable
+P011,76,M,2024-03-01,2024-03-08,CHF exacerbation EF 25%,"CAD; Hypertension; CKD stage 4; Afib","Furosemide 80mg IV; Carvedilol 25mg; Sacubitril-valsartan 97/103mg",ACE inhibitors,Dr. Chen,Cardiology,7,Discharged stable
+P012,34,F,2024-03-05,2024-03-06,Preeclampsia severe features,"G2P1 at 36 weeks","Magnesium sulfate; Labetalol 200mg; Betamethasone",None,Dr. Patel,OB,1,Delivered and discharged
+P013,58,M,2024-03-10,2024-03-14,Acute pancreatitis severe,"Alcohol use disorder; Hypertriglyceridemia","NPO; IVF; Morphine PCA; Pantoprazole 40mg",None,Dr. Johnson,GI,4,Discharged stable
+P014,47,F,2024-03-15,2024-03-17,Pulmonary embolism bilateral,"DVT left leg; OCP use","Heparin drip bridge to Apixaban 10mg BID",Heparin (HIT),Dr. Williams,Pulm,2,Discharged on anticoagulation
+P015,69,M,2024-03-20,2024-03-28,CABG x3,"CAD triple vessel; Hypertension; T2DM; Hyperlipidemia","Aspirin 81mg; Metoprolol 50mg; Atorvastatin 80mg; Metformin 500mg",None,Dr. Martinez,CT Surgery,8,Discharged to cardiac rehab

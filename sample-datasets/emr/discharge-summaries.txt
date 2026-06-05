@@ -1,0 +1,89 @@
+DISCHARGE SUMMARY - PATIENT: James R. - MRN: 00123456
+Admission: 2024-04-01 | Discharge: 2024-04-07 | LOS: 6 days
+Attending: Dr. Sarah Chen | Service: Cardiology | Ward: 4 North
+
+ADMITTING DIAGNOSIS: Chest pain, rule out ACS
+
+HOSPITAL COURSE:
+Mr. James R. is a 64-year-old male with PMH of hypertension, hyperlipidemia, and 40 pack-year smoking history who presented to the ED with 3 hours of substernal chest pain radiating to the left arm, associated with diaphoresis and shortness of breath. Initial EKG showed ST depressions in V4-V6. Troponin I was elevated at 1.8 ng/mL. Patient was diagnosed with NSTEMI and admitted to the CCU.
+
+Cardiac catheterization on hospital day 2 revealed 90% stenosis of the LAD and 70% stenosis of the RCA. Patient underwent successful PCI with drug-eluting stent placement to the LAD. RCA was managed medically given the lower-grade stenosis.
+
+Post-procedure course was uncomplicated. Echocardiogram showed EF of 45% with anterior wall hypokinesis. Patient was started on dual antiplatelet therapy, high-intensity statin, and beta-blocker. Smoking cessation counseling provided.
+
+DISCHARGE DIAGNOSES:
+1. NSTEMI - LAD territory
+2. Coronary artery disease, two-vessel
+3. Hypertension
+4. Hyperlipidemia
+5. Tobacco use disorder
+
+DISCHARGE MEDICATIONS:
+1. Aspirin 81mg PO daily (DO NOT STOP - stent)
+2. Clopidogrel 75mg PO daily x 12 months (DO NOT STOP - stent)
+3. Atorvastatin 80mg PO QHS
+4. Metoprolol succinate 50mg PO daily
+5. Lisinopril 5mg PO daily
+6. Nitroglycerin 0.4mg SL PRN chest pain
+
+FOLLOW-UP: Cardiology in 1 week, PCP in 2 weeks. Cardiac rehab referral placed.
+
+---
+
+DISCHARGE SUMMARY - PATIENT: Maria L. - MRN: 00234567
+Admission: 2024-04-10 | Discharge: 2024-04-12 | LOS: 2 days
+Attending: Dr. Robert Kim | Service: Medicine | Ward: 2 South
+
+ADMITTING DIAGNOSIS: Hyperglycemic hyperosmolar state (HHS)
+
+HOSPITAL COURSE:
+Ms. Maria L. is a 71-year-old female with T2DM managed with oral agents who presented with 5-day history of polyuria, polydipsia, and confusion. Labs notable for glucose 892 mg/dL, serum osmolality 338 mOsm/kg, BUN 34, Cr 1.4 (baseline 0.9), Na 149 (corrected). No significant ketoacidosis.
+
+Patient was admitted to medical floor with aggressive IV fluid resuscitation and insulin drip. Mental status improved significantly within 12 hours. Glucose trended down appropriately. Transitioned to subcutaneous insulin on day 2. ADA nutrition consult obtained. Precipitating factor identified as URI with poor oral intake and medication non-adherence.
+
+DISCHARGE DIAGNOSES:
+1. HHS - T2DM precipitated by illness
+2. Acute kidney injury (resolved)
+3. Dehydration
+4. T2DM, uncontrolled
+
+DISCHARGE MEDICATIONS:
+1. Metformin 1000mg PO BID (resume when Cr normalizes in 48h)
+2. Glipizide 10mg PO BID
+3. Insulin glargine 20 units SQ QHS (NEW)
+4. Insulin lispro 6 units SQ with meals (NEW)
+
+FOLLOW-UP: Endocrinology in 1 week, PCP in 3 days for recheck of renal function.
+
+---
+
+DISCHARGE SUMMARY - PATIENT: Thomas K. - MRN: 00345678
+Admission: 2024-04-15 | Discharge: 2024-04-22 | LOS: 7 days
+Attending: Dr. Lisa Park | Service: Neurology | Ward: 6 East
+
+ADMITTING DIAGNOSIS: Acute ischemic stroke
+
+HOSPITAL COURSE:
+Mr. Thomas K. is a 77-year-old male with known atrial fibrillation (not anticoagulated due to prior falls) who presented with sudden onset right-sided weakness and aphasia. NIHSS on arrival: 14. CT head negative for hemorrhage. CT angiography showed left MCA occlusion. Patient received IV alteplase within 3 hours of symptom onset, followed by mechanical thrombectomy with successful recanalization (TICI 2b).
+
+Post-intervention, patient showed significant neurological improvement. MRI brain confirmed left MCA territory infarct involving Broca's area and portions of the motor cortex. NIHSS improved to 6 at discharge.
+
+Workup for stroke etiology: TEE confirmed left atrial appendage thrombus. Decision made to initiate anticoagulation with apixaban after hemorrhagic transformation excluded on day 3 MRI.
+
+PT/OT/SLP evaluated patient; discharged to acute inpatient rehabilitation.
+
+DISCHARGE DIAGNOSES:
+1. Acute ischemic stroke - left MCA territory
+2. Atrial fibrillation with LAA thrombus
+3. Expressive aphasia (improving)
+4. Right hemiparesis (improving)
+5. Hypertension
+6. Hyperlipidemia
+
+DISCHARGE MEDICATIONS:
+1. Apixaban 10mg PO BID x 7 days, then 5mg PO BID ongoing
+2. Atorvastatin 40mg PO QHS
+3. Amlodipine 10mg PO daily
+4. Aspirin 81mg PO daily x 30 days then D/C
+
+FOLLOW-UP: Neurology in 2 weeks, Cardiology in 4 weeks, Stroke clinic in 6 weeks.
