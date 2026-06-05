@@ -65,6 +65,18 @@ export class TrainingJob {
   @Column({ type: 'jsonb', default: '[]' })
   logs: string[];
 
+  @Column({ type: 'float', nullable: true })
+  peakGpuMemGb: number;
+
+  @Column({ type: 'float', nullable: true })
+  avgTokensPerSec: number;
+
+  @Column({ nullable: true })
+  totalTrainingSec: number;
+
+  @Column({ nullable: true })
+  ttftMs: number;
+
   @Column({ nullable: true })
   startedAt: Date;
 

@@ -3,6 +3,7 @@ import { TrainingConfigDto, GpuType } from './training.dto';
 import { JobsService } from '../jobs/jobs.service';
 import { ModelsService } from '../models/models.service';
 import { DatasetsService } from '../datasets/datasets.service';
+import { ModelCatalogService } from '../model-catalog/model-catalog.service';
 
 const GPU_VRAM: Record<GpuType, number> = {
   [GpuType.RTX_4090]: 24,
@@ -31,6 +32,7 @@ export class TrainingService {
     private readonly jobsService: JobsService,
     private readonly modelsService: ModelsService,
     private readonly datasetsService: DatasetsService,
+    private readonly catalogService: ModelCatalogService,
   ) {}
 
   async launch(ownerId: string, config: TrainingConfigDto) {
@@ -61,6 +63,12 @@ export class TrainingService {
     });
 
     await this.modelsService.updateStatus(model.id, 'training', job.id);
+
+    const baseModelId = (config as any).baseModelId;
+    if (baseModelId) {
+      this.catalogService.trackJobLaunch(baseModelId, config.method || 'qlora').catch(() => {});
+    }
+
     return job;
   }
 

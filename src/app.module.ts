@@ -18,6 +18,7 @@ import { Dataset } from './datasets/dataset.entity';
 import { LlmModel } from './models/model.entity';
 import { TrainingJob } from './jobs/job.entity';
 import { Artifact } from './artifacts/artifact.entity';
+import { CatalogUsageStat } from './model-catalog/catalog-stats.entity';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { Artifact } from './artifacts/artifact.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'llmforge',
-      entities: [User, Dataset, LlmModel, TrainingJob, Artifact],
+      entities: [User, Dataset, LlmModel, TrainingJob, Artifact, CatalogUsageStat],
       synchronize: true, // auto-creates tables — use migrations in production
       // Only enable SSL for remote databases (Railway/cloud), never for localhost
       ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') && !process.env.DATABASE_URL.includes('127.0.0.1')

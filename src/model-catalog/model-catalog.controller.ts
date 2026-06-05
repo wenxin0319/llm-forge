@@ -31,6 +31,12 @@ export class ModelCatalogController {
     );
   }
 
+  @Get('usage/stats')
+  @ApiOperation({ summary: 'Get model popularity and usage statistics' })
+  getUsageStats() {
+    return this.catalogService.getUsageStats();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get details for a specific catalog model' })
   findOne(@Param('id') id: string) {

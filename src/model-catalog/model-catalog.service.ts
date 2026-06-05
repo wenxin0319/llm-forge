@@ -1,4 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CatalogUsageStat } from './catalog-stats.entity';
 
 export interface CatalogModel {
   id: string;
@@ -198,6 +201,25 @@ const CATALOG: CatalogModel[] = [
 
 @Injectable()
 export class ModelCatalogService {
+  constructor(
+    @InjectRepository(CatalogUsageStat)
+    private readonly statsRepo: Repository<CatalogUsageStat>,
+  ) {}
+
+  async trackJobLaunch(catalogModelId: string, method: string): Promise<void> {
+    await this.statsRepo.query(
+      `INSERT INTO catalog_usage_stats ("catalogModelId", method, "jobCount", "updatedAt")
+       VALUES ($1, $2, 1, NOW())
+       ON CONFLICT ("catalogModelId", method)
+       DO UPDATE SET "jobCount" = catalog_usage_stats."jobCount" + 1, "updatedAt" = NOW()`,
+      [catalogModelId, method],
+    );
+  }
+
+  async getUsageStats(): Promise<CatalogUsageStat[]> {
+    return this.statsRepo.find({ order: { jobCount: 'DESC' } });
+  }
+
   findAll(search?: string, licenseType?: string, maxParamsB?: number, minParamsB?: number, tags?: string[]): CatalogModel[] {
     return CATALOG.filter((m) => {
       if (search && !m.name.toLowerCase().includes(search.toLowerCase()) && !m.useCase.toLowerCase().includes(search.toLowerCase()) && !m.tags.some((t) => t.includes(search.toLowerCase()))) return false;
