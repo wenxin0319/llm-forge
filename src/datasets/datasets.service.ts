@@ -1,29 +1,18 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
-import { CreateDatasetDto, DatasetType } from './datasets.dto';
-
-export interface Dataset {
-  id: string;
-  ownerId: string;
-  name: string;
-  description?: string;
-  type: DatasetType;
-  tags: string[];
-  status: 'uploading' | 'processing' | 'ready' | 'error';
-  fileSize: number;
-  recordCount: number;
-  filePath: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Dataset } from './dataset.entity';
+import { CreateDatasetDto } from './datasets.dto';
 
 @Injectable()
 export class DatasetsService {
-  private readonly datasets = new Map<string, Dataset>();
+  constructor(
+    @InjectRepository(Dataset)
+    private readonly datasetRepo: Repository<Dataset>,
+  ) {}
 
-  create(ownerId: string, dto: CreateDatasetDto, file: Express.Multer.File): Dataset {
-    const dataset: Dataset = {
-      id: uuidv4(),
+  async create(ownerId: string, dto: CreateDatasetDto, file: Express.Multer.File): Promise<Dataset> {
+    const dataset = this.datasetRepo.create({
       ownerId,
       name: dto.name,
       description: dto.description,
@@ -33,46 +22,43 @@ export class DatasetsService {
       fileSize: file.size,
       recordCount: 0,
       filePath: file.path || `uploads/${file.originalname}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.datasets.set(dataset.id, dataset);
+    });
+    const saved = await this.datasetRepo.save(dataset);
+
     // Simulate async processing
-    setTimeout(() => this.finishProcessing(dataset.id, file.size), 2000);
-    return dataset;
+    setTimeout(() => this.finishProcessing(saved.id, file.size), 2000);
+    return saved;
   }
 
-  private finishProcessing(id: string, fileSize: number) {
-    const ds = this.datasets.get(id);
-    if (ds) {
-      ds.status = 'ready';
-      ds.recordCount = Math.floor(fileSize / 256); // rough estimate
-      ds.updatedAt = new Date();
-    }
+  private async finishProcessing(id: string, fileSize: number) {
+    await this.datasetRepo.update(id, {
+      status: 'ready',
+      recordCount: Math.floor(fileSize / 256),
+    });
   }
 
-  findAll(ownerId: string): Dataset[] {
-    return [...this.datasets.values()].filter((d) => d.ownerId === ownerId);
+  findAll(ownerId: string): Promise<Dataset[]> {
+    return this.datasetRepo.find({ where: { ownerId }, order: { createdAt: 'DESC' } });
   }
 
-  findOne(id: string, ownerId: string): Dataset {
-    const ds = this.datasets.get(id);
+  async findOne(id: string, ownerId: string): Promise<Dataset> {
+    const ds = await this.datasetRepo.findOne({ where: { id } });
     if (!ds) throw new NotFoundException('Dataset not found');
     if (ds.ownerId !== ownerId) throw new ForbiddenException();
     return ds;
   }
 
-  remove(id: string, ownerId: string): void {
-    this.findOne(id, ownerId);
-    this.datasets.delete(id);
+  async remove(id: string, ownerId: string): Promise<void> {
+    await this.findOne(id, ownerId);
+    await this.datasetRepo.delete(id);
   }
 
-  stats(ownerId: string) {
-    const all = this.findAll(ownerId);
+  async stats(ownerId: string) {
+    const all = await this.findAll(ownerId);
     return {
       total: all.length,
       ready: all.filter((d) => d.status === 'ready').length,
-      totalSizeBytes: all.reduce((s, d) => s + d.fileSize, 0),
+      totalSizeBytes: all.reduce((s, d) => s + Number(d.fileSize), 0),
       totalRecords: all.reduce((s, d) => s + d.recordCount, 0),
     };
   }

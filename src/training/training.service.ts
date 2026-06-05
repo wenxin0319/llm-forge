@@ -1,5 +1,4 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
 import { TrainingConfigDto, GpuType } from './training.dto';
 import { JobsService } from '../jobs/jobs.service';
 import { ModelsService } from '../models/models.service';
@@ -34,9 +33,9 @@ export class TrainingService {
     private readonly datasetsService: DatasetsService,
   ) {}
 
-  launch(ownerId: string, config: TrainingConfigDto) {
-    const model = this.modelsService.findOne(config.modelId, ownerId);
-    const dataset = this.datasetsService.findOne(config.datasetId, ownerId);
+  async launch(ownerId: string, config: TrainingConfigDto) {
+    const model = await this.modelsService.findOne(config.modelId, ownerId);
+    const dataset = await this.datasetsService.findOne(config.datasetId, ownerId);
 
     if (dataset.status !== 'ready') {
       throw new BadRequestException('Dataset is not ready yet');
@@ -48,9 +47,10 @@ export class TrainingService {
     const estimatedHours = this.estimateTrainingHours(dataset.recordCount, config.epochs || 3, totalTflops);
     const estimatedCost = estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount;
 
-    const job = this.jobsService.create(ownerId, {
+    const job = await this.jobsService.create(ownerId, {
       modelId: model.id,
       modelName: model.name,
+      baseModelId: (config as any).baseModelId,
       datasetId: dataset.id,
       datasetName: dataset.name,
       config,
@@ -60,17 +60,14 @@ export class TrainingService {
       estimatedCostUsd: parseFloat(estimatedCost.toFixed(2)),
     });
 
-    this.modelsService.updateStatus(model.id, 'training', job.id);
+    await this.modelsService.updateStatus(model.id, 'training', job.id);
     return job;
   }
 
   private estimateTrainingHours(recordCount: number, epochs: number, tflops: number): number {
-    const tokensPerRecord = 512;
-    const totalTokens = recordCount * tokensPerRecord * epochs;
-    const flopsPerToken = 6e9; // ~6B flops per token for 7B model
-    const totalFlops = totalTokens * flopsPerToken;
-    const efficiency = 0.4; // realistic GPU utilization
-    return totalFlops / (tflops * 1e12 * efficiency * 3600);
+    const totalTokens = recordCount * 512 * epochs;
+    const totalFlops = totalTokens * 6e9;
+    return totalFlops / (tflops * 1e12 * 0.4 * 3600);
   }
 
   estimateCost(config: TrainingConfigDto, recordCount: number) {
@@ -81,7 +78,7 @@ export class TrainingService {
       gpuType: config.gpuType,
       gpuCount,
       totalVramGb: GPU_VRAM[config.gpuType] * gpuCount,
-      totalTflops: totalTflops,
+      totalTflops,
       estimatedHours: parseFloat(estimatedHours.toFixed(2)),
       estimatedCostUsd: parseFloat((estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount).toFixed(2)),
       costPerHour: GPU_COST_PER_HOUR[config.gpuType] * gpuCount,

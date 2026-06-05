@@ -1,60 +1,40 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
-
-export type ArtifactFormat = 'adapter' | 'merged' | 'gguf' | 'gptq' | 'awq';
-export type ArtifactStatus = 'ready' | 'quantizing' | 'error';
-
-export interface ModelArtifact {
-  id: string;
-  ownerId: string;
-  jobId: string;
-  modelName: string;
-  baseModelId: string;
-  format: ArtifactFormat;
-  status: ArtifactStatus;
-  fileSizeGb: number;
-  quantBits?: number;
-  downloadUrl?: string;
-  createdAt: Date;
-  expiresAt?: Date;
-}
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Artifact } from './artifact.entity';
 
 @Injectable()
 export class ArtifactsService {
-  private readonly artifacts = new Map<string, ModelArtifact>();
+  constructor(
+    @InjectRepository(Artifact)
+    private readonly artifactRepo: Repository<Artifact>,
+  ) {}
 
-  create(ownerId: string, data: Omit<ModelArtifact, 'id' | 'status' | 'createdAt' | 'downloadUrl'>): ModelArtifact {
-    const artifact: ModelArtifact = {
-      id: uuidv4(),
-      status: 'ready',
-      createdAt: new Date(),
-      downloadUrl: this.generateDownloadUrl(uuidv4()),
+  async create(data: Partial<Artifact>): Promise<Artifact> {
+    const artifact = this.artifactRepo.create({
       ...data,
-      ownerId,
-    };
-    this.artifacts.set(artifact.id, artifact);
-    return artifact;
+      status: 'ready',
+      downloadUrl: this.generateDownloadUrl(),
+    });
+    return this.artifactRepo.save(artifact);
   }
 
-  findAll(ownerId: string, jobId?: string): ModelArtifact[] {
-    return [...this.artifacts.values()].filter(
-      (a) => a.ownerId === ownerId && (!jobId || a.jobId === jobId),
-    );
+  findAll(ownerId: string, jobId?: string): Promise<Artifact[]> {
+    const where: any = { ownerId };
+    if (jobId) where.jobId = jobId;
+    return this.artifactRepo.find({ where, order: { createdAt: 'DESC' } });
   }
 
-  findOne(id: string, ownerId: string): ModelArtifact {
-    const artifact = this.artifacts.get(id);
-    if (!artifact) throw new NotFoundException('Artifact not found');
-    if (artifact.ownerId !== ownerId) throw new ForbiddenException();
-    return artifact;
+  async findOne(id: string, ownerId: string): Promise<Artifact> {
+    const a = await this.artifactRepo.findOne({ where: { id } });
+    if (!a) throw new NotFoundException('Artifact not found');
+    if (a.ownerId !== ownerId) throw new ForbiddenException();
+    return a;
   }
 
-  scheduleQuantization(id: string, ownerId: string, format: 'gguf' | 'gptq' | 'awq'): ModelArtifact {
-    const source = this.findOne(id, ownerId);
-    const bits = format === 'gguf' ? 4 : format === 'gptq' ? 4 : 4;
-
-    const newArtifact: ModelArtifact = {
-      id: uuidv4(),
+  async scheduleQuantization(id: string, ownerId: string, format: 'gguf' | 'gptq' | 'awq'): Promise<Artifact> {
+    const source = await this.findOne(id, ownerId);
+    const newArtifact = this.artifactRepo.create({
       ownerId,
       jobId: source.jobId,
       modelName: source.modelName,
@@ -62,47 +42,46 @@ export class ArtifactsService {
       format,
       status: 'quantizing',
       fileSizeGb: parseFloat((source.fileSizeGb * 0.28).toFixed(2)),
-      quantBits: bits,
-      createdAt: new Date(),
-    };
-    this.artifacts.set(newArtifact.id, newArtifact);
+      quantBits: 4,
+    });
+    const saved = await this.artifactRepo.save(newArtifact);
 
-    // Simulate quantization completing
-    setTimeout(() => {
-      newArtifact.status = 'ready';
-      newArtifact.downloadUrl = this.generateDownloadUrl(newArtifact.id);
+    // Simulate quantization completing after 8s
+    setTimeout(async () => {
+      await this.artifactRepo.update(saved.id, {
+        status: 'ready',
+        downloadUrl: this.generateDownloadUrl(),
+      });
     }, 8000);
 
-    return newArtifact;
+    return saved;
   }
 
-  remove(id: string, ownerId: string): void {
-    this.findOne(id, ownerId);
-    this.artifacts.delete(id);
+  async remove(id: string, ownerId: string): Promise<void> {
+    await this.findOne(id, ownerId);
+    await this.artifactRepo.delete(id);
   }
 
-  private generateDownloadUrl(artifactId: string): string {
-    const expires = new Date(Date.now() + 3600 * 1000).toISOString();
-    return `https://storage.llmforge.io/artifacts/${artifactId}?token=mock-presigned&expires=${expires}`;
-  }
+  async createJobArtifacts(ownerId: string, jobId: string, modelName: string, baseModelId: string, outputFormat: string): Promise<Artifact[]> {
+    const sizeGb = 4.7;
+    const created: Artifact[] = [];
 
-  createJobArtifacts(ownerId: string, jobId: string, modelName: string, baseModelId: string, outputFormat: string): ModelArtifact[] {
-    const sizeGb = 4.7; // approx 7B FP16
-    const created: ModelArtifact[] = [];
+    created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'adapter', fileSizeGb: 0.03 }));
 
-    // Always create adapter
-    created.push(this.create(ownerId, { ownerId, jobId, modelName, baseModelId, format: 'adapter', fileSizeGb: 0.03 }));
-
-    if (outputFormat === 'merged' || outputFormat === 'gguf' || outputFormat === 'gptq') {
-      created.push(this.create(ownerId, { ownerId, jobId, modelName, baseModelId, format: 'merged', fileSizeGb: sizeGb }));
+    if (['merged', 'gguf', 'gptq'].includes(outputFormat)) {
+      created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'merged', fileSizeGb: sizeGb }));
     }
     if (outputFormat === 'gguf') {
-      created.push(this.create(ownerId, { ownerId, jobId, modelName, baseModelId, format: 'gguf', fileSizeGb: parseFloat((sizeGb * 0.28).toFixed(2)), quantBits: 4 }));
+      created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'gguf', fileSizeGb: parseFloat((sizeGb * 0.28).toFixed(2)), quantBits: 4 }));
     }
     if (outputFormat === 'gptq') {
-      created.push(this.create(ownerId, { ownerId, jobId, modelName, baseModelId, format: 'gptq', fileSizeGb: parseFloat((sizeGb * 0.25).toFixed(2)), quantBits: 4 }));
+      created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'gptq', fileSizeGb: parseFloat((sizeGb * 0.25).toFixed(2)), quantBits: 4 }));
     }
-
     return created;
+  }
+
+  private generateDownloadUrl(): string {
+    const expires = new Date(Date.now() + 3600 * 1000).toISOString();
+    return `https://storage.llmforge.io/artifacts/${Math.random().toString(36).slice(2)}?expires=${expires}`;
   }
 }
