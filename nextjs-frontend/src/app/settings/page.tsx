@@ -2,6 +2,8 @@
 
 import { useAuth } from '@/lib/auth';
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1').replace(/\/api\/v1$/, '');
+
 export default function SettingsPage() {
   const { user } = useAuth();
   if (!user) return null;
@@ -58,7 +60,15 @@ export default function SettingsPage() {
           <div className="card-body">
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
               Use the REST API to integrate LLM Forge into your pipelines. Swagger docs at{' '}
-              <span className="font-mono" style={{ color: 'var(--accent)', fontSize: 12 }}>http://localhost:3001/api/docs</span>
+              <a
+                href={`${API_BASE}/api/docs`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono"
+                style={{ color: 'var(--accent)', fontSize: 12 }}
+              >
+                {`${API_BASE}/api/docs`}
+              </a>
             </div>
             <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: '12px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
               Authorization: Bearer YOUR_JWT_TOKEN

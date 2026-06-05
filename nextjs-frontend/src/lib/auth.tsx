@@ -19,6 +19,9 @@ const MOCK_USERS: { email: string; password: string; user: User }[] = [
   },
 ];
 
+export const MOCK_USER_LIST: User[] = MOCK_USERS.map((m) => m.user);
+export const isMockToken = () => typeof window !== 'undefined' && (localStorage.getItem('token') ?? '').startsWith('mock_');
+
 export function mockLogin(email: string, password: string): { token: string; user: User } | null {
   const match = MOCK_USERS.find((u) => u.email === email && u.password === password);
   if (!match) return null;

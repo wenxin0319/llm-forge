@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, Shield, RefreshCw, Crown, Clock, Cpu } from 'lucide-react';
 import api from '@/api/client';
-import { useAuth } from '@/lib/auth';
+import { useAuth, MOCK_USER_LIST, isMockToken } from '@/lib/auth';
 import type { User } from '@/types';
 
 function PlanBadge({ plan }: { plan: string }) {
@@ -45,6 +45,15 @@ export default function AdminPage() {
   const load = async () => {
     setLoading(true);
     setError('');
+
+    // Demo mode: no real backend token — serve mock data locally
+    if (isMockToken()) {
+      setUsers(MOCK_USER_LIST as (User & { role: string })[]);
+      setStats({ totalUsers: MOCK_USER_LIST.length });
+      setLoading(false);
+      return;
+    }
+
     try {
       const [usersRes, statsRes] = await Promise.all([
         api.get('/admin/users'),

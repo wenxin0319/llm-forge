@@ -4,13 +4,73 @@ import { useState, useEffect } from 'react';
 import { Cpu, Thermometer, Zap, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '@/api/client';
-import type { ClusterMetrics } from '@/types';
+import { isMockToken } from '@/lib/auth';
+import type { ClusterMetrics, GpuNode } from '@/types';
+
+function generateMockCluster(): ClusterMetrics {
+  const templates = [
+    { type: 'H100-SXM5-80GB', memTotal: 80, powerLimit: 700, count: 4 },
+    { type: 'A100-SXM4-80GB', memTotal: 80, powerLimit: 400, count: 8 },
+    { type: 'A100-SXM4-40GB', memTotal: 40, powerLimit: 400, count: 8 },
+  ];
+  const nodes: GpuNode[] = [];
+  let idx = 0;
+  for (const tpl of templates) {
+    for (let i = 0; i < tpl.count; i++) {
+      const active = idx < 12;
+      const util = active ? 78 + Math.random() * 18 : Math.random() * 2;
+      const mem = active ? tpl.memTotal * (0.65 + Math.random() * 0.25) : Math.random() * 2;
+      const temp = active ? Math.round(72 + Math.random() * 12) : Math.round(33 + Math.random() * 5);
+      const power = active ? Math.round(tpl.powerLimit * (0.75 + Math.random() * 0.2)) : Math.round(60 + Math.random() * 20);
+      const prefix = tpl.type.startsWith('H') ? 'h100' : tpl.type.includes('80') ? 'a100-80' : 'a100-40';
+      nodes.push({
+        id: `gpu-${idx}`,
+        name: `node-${prefix}-${i.toString().padStart(2, '0')}`,
+        type: tpl.type,
+        utilizationPct: parseFloat(util.toFixed(1)),
+        memoryUsedGb: parseFloat(mem.toFixed(1)),
+        memoryTotalGb: tpl.memTotal,
+        temperatureC: temp,
+        powerWatts: power,
+        powerLimitWatts: tpl.powerLimit,
+        smClockMhz: tpl.type.startsWith('H') ? 3350 : 1980,
+        status: active ? (temp > 80 ? 'hot' : 'active') : 'idle',
+      });
+      idx++;
+    }
+  }
+  const active = nodes.filter((n) => n.status === 'active' || n.status === 'hot');
+  const usedMem = nodes.reduce((s, n) => s + n.memoryUsedGb, 0);
+  const totalMem = nodes.reduce((s, n) => s + n.memoryTotalGb, 0);
+  const totalPowerW = nodes.reduce((s, n) => s + n.powerWatts, 0);
+  const avgUtil = active.length ? active.reduce((s, n) => s + n.utilizationPct, 0) / active.length : 0;
+  return {
+    totalGpus: nodes.length,
+    activeGpus: active.length,
+    idleGpus: nodes.length - active.length,
+    avgUtilizationPct: parseFloat(avgUtil.toFixed(1)),
+    totalMemoryGb: totalMem,
+    usedMemoryGb: parseFloat(usedMem.toFixed(1)),
+    totalPowerKw: parseFloat((totalPowerW / 1000).toFixed(2)),
+    efficiencyScore: parseFloat((avgUtil * 0.9 + (usedMem / totalMem) * 10).toFixed(1)),
+    nodes,
+  };
+}
 
 export default function GpuClusterPage() {
   const [metrics, setMetrics] = useState<ClusterMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = () => { api.get('/gpu-metrics/cluster').then((r) => { setMetrics(r.data); setLoading(false); }).catch(() => setLoading(false)); };
+  const load = () => {
+    if (isMockToken()) {
+      setMetrics(generateMockCluster());
+      setLoading(false);
+      return;
+    }
+    api.get('/gpu-metrics/cluster')
+      .then((r) => { setMetrics(r.data); setLoading(false); })
+      .catch(() => { setMetrics(generateMockCluster()); setLoading(false); });
+  };
 
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, []);
 
