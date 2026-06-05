@@ -16,6 +16,7 @@ const BASE_PARAMS: Record<string, { params: string; sizeGb: number }> = {
 const QUANT_FACTOR: Record<string, number> = {
   [QuantizationMode.NONE]: 1.0,
   [QuantizationMode.INT8]: 0.5,
+  [QuantizationMode.FP8]: 0.5,
   [QuantizationMode.INT4]: 0.28,
   [QuantizationMode.GPTQ]: 0.25,
   [QuantizationMode.GGUF]: 0.22,

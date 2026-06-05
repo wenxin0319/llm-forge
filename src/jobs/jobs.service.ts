@@ -120,9 +120,18 @@ export class JobsService {
     }
 
     setTimeout(async () => {
+      const j = await this.jobRepo.findOne({ where: { id: jobId } });
+      const outFmt = (j?.config as any)?.outputFormat || 'gguf';
       await update({ status: 'packaging', progress: 90 });
       await pushLog('[packaging] Training complete. Merging LoRA adapters into base model...');
-      await pushLog('[packaging] Running GGUF quantization (Q4_K_M)...');
+      if (outFmt === 'fp8') {
+        await pushLog('[packaging] Converting BF16 weights → FP8 (E4M3) via AutoFP8...');
+        await pushLog('[packaging] FP8 calibration dataset: 512 samples. Activation scaling done.');
+      } else if (outFmt === 'gguf') {
+        await pushLog('[packaging] Running GGUF quantization (Q4_K_M)...');
+      } else if (outFmt === 'gptq') {
+        await pushLog('[packaging] Running GPTQ INT4 quantization...');
+      }
     }, 5000 + job.totalEpochs * epochInterval + 500);
 
     setTimeout(async () => {
@@ -138,9 +147,16 @@ export class JobsService {
       const ttftMs = Math.round(180 + Math.random() * 120);
 
       await update({ status: 'completed', progress: 100, completedAt: new Date(), actualCostUsd: actualCost, totalTrainingSec: totalTrainingSec ?? undefined, avgTokensPerSec: avgTokensPerSec ?? undefined, peakGpuMemGb: peakGpuMemGb ?? undefined, ttftMs });
+      const outFmt2 = (j.config as any)?.outputFormat || 'gguf';
       await pushLog('[done] Adapter checkpoint saved (32 MB).');
       await pushLog('[done] Merged FP16 model saved (4.7 GB).');
-      await pushLog('[done] GGUF Q4_K_M quantization complete (1.3 GB).');
+      if (outFmt2 === 'fp8') {
+        await pushLog('[done] FP8 (E4M3) model saved (2.4 GB) — ready for H100/vLLM inference.');
+      } else if (outFmt2 === 'gguf') {
+        await pushLog('[done] GGUF Q4_K_M quantization complete (1.3 GB).');
+      } else if (outFmt2 === 'gptq') {
+        await pushLog('[done] GPTQ INT4 quantization complete (1.2 GB).');
+      }
       await pushLog(`[done] Summary: avg ${avgTokensPerSec} tok/s · peak GPU mem ${peakGpuMemGb} GB · TTFT ${ttftMs} ms`);
       await pushLog('[done] Model artifacts ready for download.');
 

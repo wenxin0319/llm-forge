@@ -32,7 +32,7 @@ export class ArtifactsService {
     return a;
   }
 
-  async scheduleQuantization(id: string, ownerId: string, format: 'gguf' | 'gptq' | 'awq'): Promise<Artifact> {
+  async scheduleQuantization(id: string, ownerId: string, format: 'gguf' | 'gptq' | 'awq' | 'fp8'): Promise<Artifact> {
     const source = await this.findOne(id, ownerId);
     const newArtifact = this.artifactRepo.create({
       ownerId,
@@ -76,6 +76,9 @@ export class ArtifactsService {
     }
     if (outputFormat === 'gptq') {
       created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'gptq', fileSizeGb: parseFloat((sizeGb * 0.25).toFixed(2)), quantBits: 4 }));
+    }
+    if (outputFormat === 'fp8') {
+      created.push(await this.create({ ownerId, jobId, modelName, baseModelId, format: 'fp8', fileSizeGb: parseFloat((sizeGb * 0.5).toFixed(2)), quantBits: 8 }));
     }
     return created;
   }

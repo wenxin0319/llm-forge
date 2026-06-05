@@ -97,15 +97,16 @@ export function getMockLogs(job: MockJob): string[] {
   return all.slice(0, visible);
 }
 
-type ArtFmt = 'adapter' | 'merged' | 'gguf' | 'gptq' | 'awq';
+type ArtFmt = 'adapter' | 'merged' | 'gguf' | 'gptq' | 'awq' | 'fp8';
 
 export function getMockArtifacts(job: MockJob) {
   const fmt = job.outputFormat;
-  const base: { id: string; format: ArtFmt; fileSizeGb: number; status: 'ready' }[] = [
+  const base: { id: string; format: ArtFmt; fileSizeGb: number; quantBits?: number; status: 'ready' }[] = [
     { id: 'art-adapter', format: 'adapter', fileSizeGb: 0.03, status: 'ready' },
     { id: 'art-merged',  format: 'merged',  fileSizeGb: 7.2,  status: 'ready' },
   ];
-  if (fmt === 'gguf' || fmt === 'adapter') base.push({ id: 'art-gguf', format: 'gguf', fileSizeGb: 4.1, status: 'ready' });
-  if (fmt === 'gptq')                      base.push({ id: 'art-gptq', format: 'gptq', fileSizeGb: 3.8, status: 'ready' });
-  return base.map((a) => ({ ...a, jobId: job.id, modelName: job.modelName, quantBits: a.format === 'adapter' ? undefined : 4, downloadUrl: '#', createdAt: job.createdAt }));
+  if (fmt === 'gguf' || fmt === 'adapter') base.push({ id: 'art-gguf', format: 'gguf', fileSizeGb: 4.1, quantBits: 4, status: 'ready' });
+  if (fmt === 'gptq')                      base.push({ id: 'art-gptq', format: 'gptq', fileSizeGb: 3.8, quantBits: 4, status: 'ready' });
+  if (fmt === 'fp8')                       base.push({ id: 'art-fp8',  format: 'fp8',  fileSizeGb: 3.6, quantBits: 8, status: 'ready' });
+  return base.map((a) => ({ ...a, jobId: job.id, modelName: job.modelName, quantBits: a.quantBits, downloadUrl: '#', createdAt: job.createdAt }));
 }

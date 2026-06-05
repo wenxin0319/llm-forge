@@ -11,7 +11,7 @@ interface Artifact {
   id: string;
   jobId: string;
   modelName: string;
-  format: 'adapter' | 'merged' | 'gguf' | 'gptq' | 'awq';
+  format: 'adapter' | 'merged' | 'gguf' | 'gptq' | 'awq' | 'fp8';
   status: 'ready' | 'quantizing' | 'error';
   fileSizeGb: number;
   quantBits?: number;
@@ -27,6 +27,7 @@ const FORMAT_META: Record<string, { label: string; desc: string; icon: string; c
   gguf: { label: 'GGUF Q4_K_M', desc: 'Quantized for Ollama / llama.cpp — runs on any hardware', icon: '⚡', color: 'var(--success)' },
   gptq: { label: 'GPTQ INT4', desc: 'Quantized for vLLM — optimal GPU server inference', icon: '🚀', color: 'var(--cyan)' },
   awq: { label: 'AWQ INT4', desc: 'Activation-aware quantization — best quality at 4-bit', icon: '🎯', color: 'var(--warning)' },
+  fp8: { label: 'FP8 (E4M3)', desc: 'BF16→FP8 conversion — native H100 throughput, 8-bit float precision', icon: '🔥', color: 'var(--danger, #ef4444)' },
 };
 
 function formatSize(gb: number) {
@@ -86,6 +87,7 @@ function ArtifactCard({ artifact, onQuantize, mockCfg }: { artifact: Artifact; o
               <>
                 <button className="btn btn-secondary btn-sm" onClick={() => onQuantize(artifact.id, 'gguf')}>→ GGUF Q4</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => onQuantize(artifact.id, 'gptq')}>→ GPTQ INT4</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => onQuantize(artifact.id, 'fp8')}>→ FP8</button>
               </>
             )}
             {artifact.format === 'gguf' && artifact.downloadUrl && (

@@ -16,6 +16,7 @@ export enum QuantizationMode {
   INT4 = 'int4',
   GPTQ = 'gptq',
   GGUF = 'gguf',
+  FP8 = 'fp8',
 }
 
 export class CreateModelDto {

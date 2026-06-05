@@ -27,6 +27,7 @@ const OUTPUT_FORMATS = [
   { id: 'merged', label: 'Merged FP16', desc: '~4-70 GB — ready to serve, no base model needed' },
   { id: 'gguf', label: 'Merged + GGUF Q4', desc: '~1-20 GB — optimized for Ollama / llama.cpp' },
   { id: 'gptq', label: 'Merged + GPTQ', desc: '~1-20 GB — optimized for vLLM server inference' },
+  { id: 'fp8', label: 'Merged + FP8', desc: '~2-35 GB — BF16→FP8 conversion, native H100 inference' },
 ];
 
 function formatBytes(b: number) {
