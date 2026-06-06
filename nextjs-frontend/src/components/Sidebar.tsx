@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2, Stethoscope, Tag, ClipboardList, ListChecks, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Database, Box, Zap, Cpu, Activity, Settings, LogOut, BookOpen, Wand2, Stethoscope, Tag, ClipboardList, ListChecks, ShieldCheck, Minimize2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/catalog', icon: BookOpen, label: 'Model Catalog' },
     { href: '/finetune', icon: Wand2, label: 'Fine-tune' },
+    { href: '/distill', icon: Minimize2, label: 'Distill & Compress' },
     { href: '/datasets', icon: Database, label: 'Datasets' },
     { href: '/models', icon: Box, label: 'My Models' },
     { href: '/training', icon: Zap, label: 'Training Jobs' },

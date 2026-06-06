@@ -72,4 +72,19 @@ export class TrainingConfigDto {
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   useGradientCheckpointing?: boolean;
+
+  @ApiPropertyOptional({ description: 'Compression mode for distill/prune jobs', example: 'quantize' })
+  @IsOptional()
+  @IsString()
+  compressionMethod?: string;
+
+  @ApiPropertyOptional({ description: 'Compression target (e.g. int8, 30, half-layers)', example: 'int8' })
+  @IsOptional()
+  @IsString()
+  compressionTarget?: string;
+
+  @ApiPropertyOptional({ description: 'Output format (gguf, gptq, fp8, merged)', example: 'gguf' })
+  @IsOptional()
+  @IsString()
+  outputFormat?: string;
 }
