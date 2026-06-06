@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, Matches } from 'class-validator';
 
 export enum DatasetType {
   TEXT = 'text',
@@ -26,4 +26,21 @@ export class CreateDatasetDto {
   @IsOptional()
   @IsArray()
   tags?: string[];
+}
+
+export class ImportHuggingFaceDto {
+  @ApiProperty({ example: 'tatsu-lab/alpaca', description: 'HuggingFace dataset repo ID (owner/dataset-name)' })
+  @IsString()
+  @Matches(/^[\w.-]+\/[\w.-]+$/, { message: 'repoId must be in the format owner/dataset-name' })
+  repoId: string;
+
+  @ApiPropertyOptional({ example: 'Alpaca instruction dataset' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
 }

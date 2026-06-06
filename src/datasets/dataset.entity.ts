@@ -32,6 +32,9 @@ export class Dataset {
   @Column({ default: '' })
   filePath: string;
 
+  @Column({ nullable: true })
+  huggingfaceId: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

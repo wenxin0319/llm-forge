@@ -1,12 +1,12 @@
 import {
   Controller, Get, Post, Delete, Param, Body, UseGuards, Request,
-  UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator,
+  UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { DatasetsService } from './datasets.service';
-import { CreateDatasetDto } from './datasets.dto';
+import { CreateDatasetDto, ImportHuggingFaceDto } from './datasets.dto';
 
 @ApiTags('datasets')
 @ApiBearerAuth()
@@ -27,6 +27,13 @@ export class DatasetsController {
     file: Express.Multer.File,
   ) {
     return this.datasetsService.create(req.user.id, dto, file);
+  }
+
+  @Post('import-hf')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Import a dataset from a HuggingFace repo ID' })
+  importFromHuggingFace(@Request() req, @Body() dto: ImportHuggingFaceDto) {
+    return this.datasetsService.importFromHuggingFace(req.user.id, dto);
   }
 
   @Get()

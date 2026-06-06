@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, ChevronRight, ChevronLeft, Zap, DollarSign, Cpu, Settings2 } from 'lucide-react';
+import { Upload, ChevronRight, ChevronLeft, Zap, DollarSign, Cpu, Settings2, Search, ExternalLink } from 'lucide-react';
 import api from '@/api/client';
 import { saveMockJob } from '@/lib/mockStore';
+
+interface HfMeta { id: string; description?: string; downloads?: number; likes?: number; tags?: string[] }
 
 interface SelectedModel { id: string; name: string; params: string; vramRequiredGb: { qlora: number; lora: number; full: number }; supportedMethods: string[] }
 
@@ -60,6 +62,7 @@ export default function FinetunePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Dataset state
+  const [datasetTab, setDatasetTab] = useState<'upload' | 'huggingface'>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string[]>([]);
   const [detectedFormat, setDetectedFormat] = useState('');
@@ -67,6 +70,12 @@ export default function FinetunePage() {
   const [trainSplit, setTrainSplit] = useState(85);
   const [instrField, setInstrField] = useState('instruction');
   const [outputField, setOutputField] = useState('output');
+
+  // HuggingFace dataset state
+  const [hfRepoId, setHfRepoId] = useState('');
+  const [hfMeta, setHfMeta] = useState<HfMeta | null>(null);
+  const [hfChecking, setHfChecking] = useState(false);
+  const [hfError, setHfError] = useState('');
 
   // Config state
   const [method, setMethod] = useState('qlora');
@@ -100,15 +109,39 @@ export default function FinetunePage() {
     reader.readAsText(f.slice(0, 50000));
   };
 
+  const checkHfRepo = async () => {
+    const id = hfRepoId.trim();
+    if (!id || !id.includes('/')) { setHfError('Format must be owner/dataset-name'); return; }
+    setHfChecking(true); setHfError(''); setHfMeta(null);
+    try {
+      const res = await fetch(`https://huggingface.co/api/datasets/${id}`);
+      if (!res.ok) { setHfError(`Dataset "${id}" not found on HuggingFace`); return; }
+      const data = await res.json() as HfMeta;
+      setHfMeta(data);
+      setDatasetName(id.split('/').pop() || id);
+    } catch {
+      setHfError('Could not reach HuggingFace — check your connection');
+    } finally { setHfChecking(false); }
+  };
+
   const gpu = GPU_TIERS.find((g) => g.id === gpuType)!;
   const estimatedHrs = parseFloat(((epochs * 1000000) / (gpu.tflops * 1e12 * 0.4 * 3600) * 1e9).toFixed(2));
   const estimatedCost = parseFloat((estimatedHrs * gpu.costPerHr * gpuCount).toFixed(2));
 
   const handleLaunch = async () => {
     setLaunching(true);
+    const effectiveName = datasetTab === 'huggingface' ? (hfMeta?.id?.split('/').pop() || hfRepoId) : (datasetName || file?.name || 'training-data');
     try {
       let dsId = uploadedDatasetId;
-      if (!dsId && file) {
+      if (!dsId && datasetTab === 'huggingface' && hfMeta) {
+        const dsRes = await api.post('/datasets/import-hf', {
+          repoId: hfRepoId.trim(),
+          name: hfMeta.id.split('/').pop(),
+          description: hfMeta.description?.slice(0, 200),
+        });
+        dsId = dsRes.data.id;
+        setUploadedDatasetId(dsId);
+      } else if (!dsId && file) {
         const fd = new FormData();
         fd.append('file', file);
         fd.append('name', datasetName);
@@ -131,7 +164,7 @@ export default function FinetunePage() {
       saveMockJob({
         id: mockId,
         modelName: model?.name || 'My Fine-tuned Model',
-        datasetName: datasetName || file?.name || 'training-data',
+        datasetName: effectiveName,
         method, outputFormat, gpuType,
         gpuVramGb: g.vram, gpuTflops: g.tflops,
         estimatedCostUsd: estimatedCost,
@@ -180,63 +213,139 @@ export default function FinetunePage() {
         {step === 1 && (
           <div>
             <div className="card mb-4">
-              <div className="card-header"><div className="card-title"><Upload size={14} /> Upload Training Data</div></div>
+              <div className="card-header"><div className="card-title"><Upload size={14} /> Training Data</div></div>
               <div className="card-body">
-                <div className={`upload-zone mb-4${dragOver ? ' drag-over' : ''}`}
-                  onClick={() => fileRef.current?.click()}
-                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
-                  {file ? (
-                    <><div style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>{file.name}</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{formatBytes(file.size)} — {detectedFormat}</div></>
-                  ) : (
-                    <><Upload size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 10px' }} /><div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Drop your dataset here</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>JSONL, CSV, Parquet, plain text — up to 5 GB</div></>
-                  )}
+
+                {/* Tab toggle */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-secondary)', borderRadius: 8, padding: 4 }}>
+                  {(['upload', 'huggingface'] as const).map((tab) => (
+                    <button key={tab} onClick={() => setDatasetTab(tab)}
+                      style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                        background: datasetTab === tab ? 'var(--bg-card)' : 'transparent',
+                        color: datasetTab === tab ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {tab === 'upload'
+                        ? <><Upload size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Upload File</>
+                        : <>🤗 HuggingFace</>}
+                    </button>
+                  ))}
                 </div>
-                <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
 
-                {file && (
+                {datasetTab === 'upload' ? (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">Dataset Name</label>
-                      <input className="form-input" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} />
+                    <div className={`upload-zone mb-4${dragOver ? ' drag-over' : ''}`}
+                      onClick={() => fileRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
+                      {file ? (
+                        <><div style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)' }}>{file.name}</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{formatBytes(file.size)} — {detectedFormat}</div></>
+                      ) : (
+                        <><Upload size={28} style={{ color: 'var(--text-muted)', margin: '0 auto 10px' }} /><div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>Drop your dataset here</div><div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>JSONL, CSV, Parquet, plain text — up to 5 GB</div></>
+                      )}
                     </div>
-                    {detectedFormat && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: 'var(--success-dim)', borderRadius: 8, border: '1px solid var(--success)', fontSize: 13 }}>
-                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Detected format:</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{detectedFormat}</span>
-                      </div>
+                    <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+
+                    {file && (
+                      <>
+                        <div className="form-group">
+                          <label className="form-label">Dataset Name</label>
+                          <input className="form-input" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} />
+                        </div>
+                        {detectedFormat && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: 'var(--success-dim)', borderRadius: 8, border: '1px solid var(--success)', fontSize: 13 }}>
+                            <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Detected format:</span>
+                            <span style={{ color: 'var(--text-secondary)' }}>{detectedFormat}</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Instruction field</label>
+                            <input className="form-input" value={instrField} onChange={(e) => setInstrField(e.target.value)} placeholder="instruction" />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Output field</label>
+                            <input className="form-input" value={outputField} onChange={(e) => setOutputField(e.target.value)} placeholder="output" />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Train / Validation split — {trainSplit}% train</label>
+                          <input type="range" min={70} max={95} value={trainSplit} onChange={(e) => setTrainSplit(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                          <div className="form-hint">{trainSplit}% training data, {100 - trainSplit}% validation</div>
+                        </div>
+
+                        {preview.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Preview (first {preview.length} rows)</div>
+                            <div className="log-viewer" style={{ color: '#a5f3fc' }}>
+                              {preview.map((line, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{line.length > 200 ? line.slice(0, 200) + '…' : line}</div>)}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label">Instruction field</label>
-                        <input className="form-input" value={instrField} onChange={(e) => setInstrField(e.target.value)} placeholder="instruction" />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label">Output field</label>
-                        <input className="form-input" value={outputField} onChange={(e) => setOutputField(e.target.value)} placeholder="output" />
-                      </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                      Paste a HuggingFace dataset repo ID. The platform imports it and uses it as the training dataset.
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Train / Validation split — {trainSplit}% train</label>
-                      <input type="range" min={70} max={95} value={trainSplit} onChange={(e) => setTrainSplit(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)' }} />
-                      <div className="form-hint">{trainSplit}% training data, {100 - trainSplit}% validation</div>
+                      <label className="form-label">HuggingFace Repo ID</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input className="form-input" style={{ flex: 1, fontFamily: 'monospace' }}
+                          value={hfRepoId}
+                          onChange={(e) => { setHfRepoId(e.target.value); setHfMeta(null); setHfError(''); }}
+                          onKeyDown={(e) => e.key === 'Enter' && checkHfRepo()}
+                          placeholder="owner/dataset-name  e.g. tatsu-lab/alpaca" />
+                        <button className="btn btn-secondary" onClick={checkHfRepo} disabled={hfChecking || !hfRepoId.trim()}>
+                          {hfChecking ? <div className="spinner" /> : <><Search size={13} /> Verify</>}
+                        </button>
+                      </div>
+                      {hfError && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{hfError}</div>}
                     </div>
 
-                    {preview.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8 }}>Preview (first {preview.length} rows)</div>
-                        <div className="log-viewer" style={{ color: '#a5f3fc' }}>
-                          {preview.map((line, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{line.length > 200 ? line.slice(0, 200) + '…' : line}</div>)}
+                    {hfMeta && (
+                      <div style={{ padding: '14px 16px', background: 'var(--success-dim)', border: '1px solid var(--success)', borderRadius: 10, marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>{hfMeta.id}</div>
+                          <a href={`https://huggingface.co/datasets/${hfMeta.id}`} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent)' }}>
+                            View on HF <ExternalLink size={10} />
+                          </a>
+                        </div>
+                        {hfMeta.description && (
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.5 }}>
+                            {hfMeta.description.slice(0, 160)}{hfMeta.description.length > 160 ? '…' : ''}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--text-muted)' }}>
+                          {hfMeta.downloads != null && <span>↓ {hfMeta.downloads.toLocaleString()} downloads</span>}
+                          {hfMeta.likes != null && <span>♥ {hfMeta.likes.toLocaleString()} likes</span>}
+                          {hfMeta.tags?.slice(0, 3).map((t) => <span key={t} style={{ fontSize: 10, background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: 4 }}>{t.replace(/^[^:]+:/, '')}</span>)}
                         </div>
                       </div>
                     )}
+
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Popular examples:{' '}
+                      {['tatsu-lab/alpaca', 'HuggingFaceH4/ultrachat_200k', 'yahma/alpaca-cleaned'].map((ex, i) => (
+                        <span key={ex}>
+                          {i > 0 && ' · '}
+                          <span style={{ fontFamily: 'monospace', color: 'var(--accent)', cursor: 'pointer' }}
+                            onClick={() => { setHfRepoId(ex); setHfMeta(null); setHfError(''); }}>
+                            {ex}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
                   </>
                 )}
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button className="btn btn-primary" disabled={!file} onClick={() => setStep(2)}>
+              <button className="btn btn-primary"
+                disabled={datasetTab === 'upload' ? !file : !hfMeta}
+                onClick={() => setStep(2)}>
                 Next: Configure <ChevronRight size={14} />
               </button>
             </div>
@@ -351,7 +460,7 @@ export default function FinetunePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                   {[
                     { label: 'Base Model', value: model?.name || 'Not selected' },
-                    { label: 'Dataset', value: file?.name || 'None' },
+                    { label: 'Dataset', value: datasetTab === 'huggingface' ? (hfMeta?.id || hfRepoId || 'None') : (file?.name || 'None') },
                     { label: 'Method', value: METHODS.find((m) => m.id === method)?.label || method },
                     { label: 'GPU', value: `${GPU_TIERS.find((g) => g.id === gpuType)?.label} × ${gpuCount}` },
                     { label: 'Epochs', value: String(epochs) },

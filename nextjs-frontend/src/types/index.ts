@@ -18,6 +18,7 @@ export interface Dataset {
   status: 'uploading' | 'processing' | 'ready' | 'error';
   fileSize: number;
   recordCount: number;
+  huggingfaceId?: string;
   createdAt: string;
 }
 
