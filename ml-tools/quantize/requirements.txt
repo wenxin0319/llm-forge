@@ -1,0 +1,6 @@
+# Install torch separately first (see README) — the CPU wheel from
+# https://download.pytorch.org/whl/cpu is far smaller than the default
+# CUDA-bundled PyPI build. torch is intentionally NOT pinned here.
+huggingface_hub==1.23.0
+numpy==2.5.1
+safetensors==0.8.0

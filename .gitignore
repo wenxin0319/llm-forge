@@ -6,3 +6,5 @@ uploads/
 .DS_Store
 frontend/node_modules/
 frontend/dist/
+ml-tools/quantize/.venv/
+ml-tools/quantize/out/
