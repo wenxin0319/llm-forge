@@ -1,4 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
 @Entity('training_jobs')
 export class TrainingJob {
@@ -17,11 +22,20 @@ export class TrainingJob {
   @Column({ nullable: true })
   baseModelId: string;
 
+  @Column({ default: '', select: false })
+  modelSource: string;
+
   @Column()
   datasetId: string;
 
   @Column()
   datasetName: string;
+
+  @Column({ default: '', select: false })
+  datasetPath: string;
+
+  @Column({ default: '', select: false })
+  outputPath: string;
 
   @Column({ type: 'jsonb', default: '{}' })
   config: object;

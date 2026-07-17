@@ -6,17 +6,21 @@ committed, pasted into tickets, or included in screenshots.
 
 ## Environment-variable inventory
 
-| Variable | Required | Secret? | Purpose |
-|---|---|---|---|
-| `JWT_SECRET` | Yes | Yes | Signs seven-day API access tokens; startup fails if absent |
-| `ADMIN_EMAIL` | No | Personal/config | Administrator identity to create or synchronize at boot |
-| `ADMIN_PASSWORD` | With `ADMIN_EMAIL` | Yes | Creates or rotates the administrator password hash at boot |
-| `DATABASE_URL` | Production | Yes | PostgreSQL connection URI, normally injected by the provider |
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Local alternative | Partly | Split PostgreSQL configuration when `DATABASE_URL` is absent |
-| `FRONTEND_URL` | Yes in production | No | Allowed browser origin for CORS |
-| `PORT` | Provider-dependent | No | Backend listen port, default `3001` |
-| `GPU_METRICS_MODE` | No | No | `auto`, `real`, or `mock`; use `real` on production GPU workers |
-| `NEXT_PUBLIC_API_URL` | Frontend | No, public | Browser-visible backend API base URL |
+| Variable                                                      | Required           | Secret?         | Purpose                                                                                        |
+| ------------------------------------------------------------- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------- |
+| `JWT_SECRET`                                                  | Yes                | Yes             | Signs seven-day API access tokens; startup fails if absent                                     |
+| `ADMIN_EMAIL`                                                 | No                 | Personal/config | Administrator identity to create or synchronize at boot                                        |
+| `ADMIN_PASSWORD`                                              | With `ADMIN_EMAIL` | Yes             | Creates or rotates the administrator password hash at boot                                     |
+| `DATABASE_URL`                                                | Production         | Yes             | PostgreSQL connection URI, normally injected by the provider                                   |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | Local alternative  | Partly          | Split PostgreSQL configuration when `DATABASE_URL` is absent                                   |
+| `FRONTEND_URL`                                                | Yes in production  | No              | Allowed browser origin for CORS                                                                |
+| `PORT`                                                        | Provider-dependent | No              | Backend listen port, default `3001`                                                            |
+| `GPU_METRICS_MODE`                                            | No                 | No              | `auto`, `real`, or `mock`; use `real` on production GPU workers                                |
+| `TRAINING_EXECUTION_MODE`                                     | No                 | No              | `mock` (default) or `local`; `local` launches the approved training script on the backend host |
+| `TRAINING_PYTHON_EXECUTABLE`                                  | Local worker       | No              | Python executable for the isolated training environment                                        |
+| `TRAINING_DATA_ROOT`                                          | Local worker       | No              | Root boundary containing datasets the worker may read                                          |
+| `TRAINING_OUTPUT_ROOT`                                        | Local worker       | No              | Root boundary for per-job adapters and metrics                                                 |
+| `NEXT_PUBLIC_API_URL`                                         | Frontend           | No, public      | Browser-visible backend API base URL                                                           |
 
 Do not place server secrets in variables beginning with `NEXT_PUBLIC_` or
 `VITE_`; those values are compiled into browser assets.
@@ -38,6 +42,9 @@ Do not place server secrets in variables beginning with `NEXT_PUBLIC_` or
 5. Set `GPU_METRICS_MODE=real` only on a worker where `nvidia-smi` must be
    available. Use `mock` for the public frontend demo and `auto` for local
    development.
+   Keep `TRAINING_EXECUTION_MODE=mock` on the public demo. Set it to `local`
+   only on a dedicated worker with the training virtual environment, CUDA,
+   restricted upload/output roots, and appropriate filesystem quotas.
 6. Deploy and verify that startup contains `Admin account seeded` or
    `Admin account synced from env` without printing any credential value.
 7. Log in through TLS, verify `/auth/me`, then verify that a non-admin account
@@ -87,12 +94,12 @@ name, and update timestamp while values remain masked.
 
 Required evidence files for a release audit:
 
-| Evidence | Suggested path | Required visible information |
-|---|---|---|
-| Backend variable inventory | `docs/evidence/secrets/backend-env-redacted.png` | Variable names; every value masked |
-| Frontend variable inventory | `docs/evidence/secrets/frontend-env-redacted.png` | Only public variable names; values may still be masked |
-| Admin rotation deployment | `docs/evidence/secrets/admin-rotation-redacted.png` | Deployment ID/time and successful health status |
-| Rotation verification | `docs/evidence/secrets/rotation-verification.md` | Old login rejected; new login accepted; no tokens |
+| Evidence                    | Suggested path                                      | Required visible information                           |
+| --------------------------- | --------------------------------------------------- | ------------------------------------------------------ |
+| Backend variable inventory  | `docs/evidence/secrets/backend-env-redacted.png`    | Variable names; every value masked                     |
+| Frontend variable inventory | `docs/evidence/secrets/frontend-env-redacted.png`   | Only public variable names; values may still be masked |
+| Admin rotation deployment   | `docs/evidence/secrets/admin-rotation-redacted.png` | Deployment ID/time and successful health status        |
+| Rotation verification       | `docs/evidence/secrets/rotation-verification.md`    | Old login rejected; new login accepted; no tokens      |
 
 Before committing screenshots, inspect them at full resolution for passwords,
 connection strings, tokens, email addresses that should remain private, QR

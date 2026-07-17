@@ -21,8 +21,8 @@ const GPU_TFLOPS: Record<GpuType, number> = {
 
 const GPU_COST_PER_HOUR: Record<GpuType, number> = {
   [GpuType.RTX_4090]: 0.74,
-  [GpuType.A100_40GB]: 2.10,
-  [GpuType.A100_80GB]: 3.20,
+  [GpuType.A100_40GB]: 2.1,
+  [GpuType.A100_80GB]: 3.2,
   [GpuType.H100_80GB]: 5.89,
 };
 
@@ -36,8 +36,10 @@ export class TrainingService {
   ) {}
 
   async launch(ownerId: string, config: TrainingConfigDto) {
-    const model = await this.modelsService.findOne(config.modelId, ownerId);
-    const dataset = await this.datasetsService.findOne(config.datasetId, ownerId);
+    const dataset = await this.datasetsService.findOne(
+      config.datasetId,
+      ownerId,
+    );
 
     if (dataset.status !== 'ready') {
       throw new BadRequestException('Dataset is not ready yet');
@@ -46,15 +48,52 @@ export class TrainingService {
     const gpuCount = config.gpuCount || 1;
     const totalVram = GPU_VRAM[config.gpuType] * gpuCount;
     const totalTflops = GPU_TFLOPS[config.gpuType] * gpuCount;
-    const estimatedHours = this.estimateTrainingHours(dataset.recordCount, config.epochs || 3, totalTflops);
-    const estimatedCost = estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount;
+    const estimatedHours = this.estimateTrainingHours(
+      dataset.recordCount,
+      config.epochs || 3,
+      totalTflops,
+    );
+    const estimatedCost =
+      estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount;
+
+    let modelId = config.modelId;
+    let modelName: string;
+    let baseModelId: string;
+    let modelSource: string;
+    let userModelId: string | undefined;
+
+    try {
+      const userModel = await this.modelsService.findOne(
+        config.modelId,
+        ownerId,
+      );
+      const catalogModel = this.catalogService.findOne(
+        config.baseModelId || userModel.baseModel,
+      );
+      userModelId = userModel.id;
+      modelName = userModel.name;
+      baseModelId = catalogModel.id;
+      modelSource = catalogModel.huggingfaceId;
+    } catch (error) {
+      if (config.baseModelId && config.baseModelId !== config.modelId)
+        throw error;
+      const catalogModel = this.catalogService.findOne(
+        config.baseModelId || config.modelId,
+      );
+      modelId = catalogModel.id;
+      modelName = catalogModel.name;
+      baseModelId = catalogModel.id;
+      modelSource = catalogModel.huggingfaceId;
+    }
 
     const job = await this.jobsService.create(ownerId, {
-      modelId: model.id,
-      modelName: model.name,
-      baseModelId: (config as any).baseModelId,
+      modelId,
+      modelName,
+      baseModelId,
+      modelSource,
       datasetId: dataset.id,
       datasetName: dataset.name,
+      datasetPath: dataset.filePath,
       config,
       gpuVramGb: totalVram,
       gpuTflops: totalTflops,
@@ -62,17 +101,23 @@ export class TrainingService {
       estimatedCostUsd: parseFloat(estimatedCost.toFixed(2)),
     });
 
-    await this.modelsService.updateStatus(model.id, 'training', job.id);
+    if (userModelId)
+      await this.modelsService.updateStatus(userModelId, 'training', job.id);
 
-    const baseModelId = (config as any).baseModelId;
     if (baseModelId) {
-      this.catalogService.trackJobLaunch(baseModelId, config.method || 'qlora').catch(() => {});
+      this.catalogService
+        .trackJobLaunch(baseModelId, config.method || 'qlora')
+        .catch(() => {});
     }
 
     return job;
   }
 
-  private estimateTrainingHours(recordCount: number, epochs: number, tflops: number): number {
+  private estimateTrainingHours(
+    recordCount: number,
+    epochs: number,
+    tflops: number,
+  ): number {
     const totalTokens = recordCount * 512 * epochs;
     const totalFlops = totalTokens * 6e9;
     return totalFlops / (tflops * 1e12 * 0.4 * 3600);
@@ -81,14 +126,22 @@ export class TrainingService {
   estimateCost(config: TrainingConfigDto, recordCount: number) {
     const gpuCount = config.gpuCount || 1;
     const totalTflops = GPU_TFLOPS[config.gpuType] * gpuCount;
-    const estimatedHours = this.estimateTrainingHours(recordCount, config.epochs || 3, totalTflops);
+    const estimatedHours = this.estimateTrainingHours(
+      recordCount,
+      config.epochs || 3,
+      totalTflops,
+    );
     return {
       gpuType: config.gpuType,
       gpuCount,
       totalVramGb: GPU_VRAM[config.gpuType] * gpuCount,
       totalTflops,
       estimatedHours: parseFloat(estimatedHours.toFixed(2)),
-      estimatedCostUsd: parseFloat((estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount).toFixed(2)),
+      estimatedCostUsd: parseFloat(
+        (estimatedHours * GPU_COST_PER_HOUR[config.gpuType] * gpuCount).toFixed(
+          2,
+        ),
+      ),
       costPerHour: GPU_COST_PER_HOUR[config.gpuType] * gpuCount,
     };
   }

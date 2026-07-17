@@ -1,8 +1,17 @@
-import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TrainingJob } from './job.entity';
 import { ArtifactsService } from '../artifacts/artifacts.service';
+import { TrainingProcessRunner } from './training-process.runner';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export interface MetricPoint {
   step: number;
@@ -10,9 +19,9 @@ export interface MetricPoint {
   timestampMs: number;
   trainLoss: number;
   valLoss: number | null;
-  learningRate: number;
-  tokensPerSec: number;
-  stepsPerSec: number;
+  learningRate: number | null;
+  tokensPerSec: number | null;
+  stepsPerSec: number | null;
   gpuUtilPct: number[];
   gpuMemUsedGb: number[];
 }
@@ -30,14 +39,20 @@ export interface MetricsSummary {
 
 @Injectable()
 export class JobsService {
+  private readonly metricPollers = new Map<string, NodeJS.Timeout>();
+
   constructor(
     @InjectRepository(TrainingJob)
     private readonly jobRepo: Repository<TrainingJob>,
     @Inject(forwardRef(() => ArtifactsService))
     private readonly artifactsService: ArtifactsService,
+    private readonly processRunner: TrainingProcessRunner,
   ) {}
 
-  async create(ownerId: string, data: Partial<TrainingJob>): Promise<TrainingJob> {
+  async create(
+    ownerId: string,
+    data: Partial<TrainingJob>,
+  ): Promise<TrainingJob> {
     const job = this.jobRepo.create({
       ownerId,
       status: 'queued',
@@ -49,8 +64,144 @@ export class JobsService {
       ...data,
     });
     const saved = await this.jobRepo.save(job);
-    this.simulateTraining(saved.id);
+    if (this.processRunner.isEnabled()) void this.executeRealTraining(saved);
+    else this.simulateTraining(saved.id);
     return saved;
+  }
+
+  private async executeRealTraining(job: TrainingJob) {
+    await this.jobRepo.update(job.id, {
+      status: 'preprocessing',
+      logs: [
+        ...job.logs,
+        '[worker] Starting approved local training process...',
+      ],
+    });
+
+    try {
+      const outputPath = this.processRunner.start(job, {
+        onLog: (line) => void this.pushLog(job.id, line),
+        onError: (error) =>
+          void this.finishRealJob(job.id, 1, null, error.message),
+        onExit: (code, signal) => void this.finishRealJob(job.id, code, signal),
+      });
+      await this.jobRepo.update(job.id, {
+        status: 'training',
+        startedAt: new Date(),
+        outputPath,
+      });
+      this.startMetricPolling(job.id, outputPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.finishRealJob(job.id, 1, null, message);
+    }
+  }
+
+  private async pushLog(jobId: string, line: string) {
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    if (job) await this.jobRepo.update(jobId, { logs: [...job.logs, line] });
+  }
+
+  private startMetricPolling(jobId: string, outputPath: string) {
+    let consumed = 0;
+    const poll = async () => {
+      const metricsPath = join(outputPath, 'metrics.jsonl');
+      if (!existsSync(metricsPath)) return;
+      const points = readFileSync(metricsPath, 'utf8')
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as MetricPoint);
+      if (points.length <= consumed) return;
+      const job = await this.jobRepo.findOne({ where: { id: jobId } });
+      if (!job) return;
+      const additions = points.slice(consumed);
+      consumed = points.length;
+      const latest = additions.at(-1)!;
+      const progress = job.totalEpochs
+        ? Math.min(
+            95,
+            Math.round((Number(latest.epoch) / job.totalEpochs) * 100),
+          )
+        : job.progress;
+      await this.jobRepo.update(jobId, {
+        metrics: [...job.metrics, ...additions],
+        currentEpoch: Math.floor(Number(latest.epoch)),
+        progress,
+        trainLoss: latest.trainLoss ?? job.trainLoss,
+        valLoss: latest.valLoss ?? job.valLoss,
+      });
+    };
+    const timer = setInterval(
+      () =>
+        void poll().catch((error) =>
+          this.pushLog(jobId, `[metrics] ${error.message}`),
+        ),
+      1000,
+    );
+    this.metricPollers.set(jobId, timer);
+  }
+
+  private async finishRealJob(
+    jobId: string,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+    errorMessage?: string,
+  ) {
+    const timer = this.metricPollers.get(jobId);
+    if (timer) clearInterval(timer);
+    this.metricPollers.delete(jobId);
+
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    if (!job || job.status === 'cancelled') return;
+    const completedAt = new Date();
+    const totalTrainingSec = job.startedAt
+      ? Math.round(
+          (completedAt.getTime() - new Date(job.startedAt).getTime()) / 1000,
+        )
+      : 0;
+    const metrics = job.metrics as MetricPoint[];
+    const tokenRates = metrics
+      .map((point) => point.tokensPerSec)
+      .filter((value): value is number => value != null);
+    const avgTokensPerSec = tokenRates.length
+      ? Number(
+          (
+            tokenRates.reduce((sum, value) => sum + value, 0) /
+            tokenRates.length
+          ).toFixed(1),
+        )
+      : undefined;
+    const hourlyRate =
+      job.estimatedHours > 0 ? job.estimatedCostUsd / job.estimatedHours : 0;
+    const actualCostUsd = Number(
+      ((totalTrainingSec / 3600) * hourlyRate).toFixed(4),
+    );
+
+    if (code === 0) {
+      await this.jobRepo.update(jobId, {
+        status: 'completed',
+        progress: 100,
+        completedAt,
+        totalTrainingSec,
+        avgTokensPerSec,
+        actualCostUsd,
+        logs: [
+          ...job.logs,
+          '[worker] Training process completed successfully.',
+        ],
+      });
+    } else {
+      const reason =
+        errorMessage ||
+        `exit code ${code}${signal ? `, signal ${signal}` : ''}`;
+      await this.jobRepo.update(jobId, {
+        status: 'failed',
+        completedAt,
+        totalTrainingSec,
+        actualCostUsd,
+        logs: [...job.logs, `[worker] Training process failed: ${reason}`],
+      });
+    }
   }
 
   private async simulateTraining(jobId: string) {
@@ -62,29 +213,47 @@ export class JobsService {
 
     const pushLog = async (line: string) => {
       const j = await this.jobRepo.findOne({ where: { id: jobId } });
-      if (j) await this.jobRepo.update(jobId, { logs: [...(j.logs as string[]), line] });
+      if (j)
+        await this.jobRepo.update(jobId, {
+          logs: [...(j.logs as string[]), line],
+        });
     };
 
     const pushMetric = async (point: MetricPoint) => {
       const j = await this.jobRepo.findOne({ where: { id: jobId } });
-      if (j) await this.jobRepo.update(jobId, { metrics: [...(j.metrics as object[]), point] });
+      if (j)
+        await this.jobRepo.update(jobId, {
+          metrics: [...(j.metrics as object[]), point],
+        });
     };
 
     setTimeout(async () => {
       await update({ status: 'preprocessing' });
-      await pushLog('[00:15] Preprocessing dataset — tokenizing and splitting train/val...');
+      await pushLog(
+        '[00:15] Preprocessing dataset — tokenizing and splitting train/val...',
+      );
     }, 1500);
 
     setTimeout(async () => {
-      await pushLog('[00:45] Dataset preprocessed. Train: 42,847 rows | Val: 4,761 rows');
-      await pushLog('[00:50] Downloading base model weights from HuggingFace Hub...');
+      await pushLog(
+        '[00:45] Dataset preprocessed. Train: 42,847 rows | Val: 4,761 rows',
+      );
+      await pushLog(
+        '[00:50] Downloading base model weights from HuggingFace Hub...',
+      );
     }, 3000);
 
     setTimeout(async () => {
       await update({ status: 'training', startedAt: new Date() });
-      await pushLog('[01:20] Base model loaded. Initializing QLoRA adapters (rank=16)...');
-      await pushLog('[01:25] Flash Attention 2.0 enabled. Gradient checkpointing active.');
-      await pushLog('[01:30] Training started. Parallel data loading active (4 workers).');
+      await pushLog(
+        '[01:20] Base model loaded. Initializing QLoRA adapters (rank=16)...',
+      );
+      await pushLog(
+        '[01:25] Flash Attention 2.0 enabled. Gradient checkpointing active.',
+      );
+      await pushLog(
+        '[01:30] Training started. Parallel data loading active (4 workers).',
+      );
     }, 5000);
 
     const epochInterval = 6000;
@@ -92,82 +261,169 @@ export class JobsService {
     for (let epoch = 1; epoch <= job.totalEpochs; epoch++) {
       const stepsPerEpoch = 12;
       for (let step = 1; step <= stepsPerEpoch; step++) {
-        setTimeout(async () => {
-          const globalStep = (epoch - 1) * stepsPerEpoch + step;
-          const progress = globalStep / totalSteps;
-          const trainLoss = parseFloat((2.4 - progress * 1.6 + (Math.random() - 0.5) * 0.06).toFixed(4));
-          const valLoss = step === stepsPerEpoch
-            ? parseFloat((trainLoss + 0.08 + Math.random() * 0.03).toFixed(4))
-            : null;
-          const lr = parseFloat((2e-4 * Math.cos(progress * Math.PI * 0.5)).toFixed(6));
-          const tps = Math.round(1850 + Math.random() * 350);
-          const sps = parseFloat((tps / 512).toFixed(3));
-          const gpuCount = Math.min(Math.max(Math.ceil(job.gpuVramGb / 80), 1), 4);
-          const gpuUtilPct = Array.from({ length: gpuCount }, () => Math.round(82 + Math.random() * 15));
-          const gpuMemUsedGb = Array.from({ length: gpuCount }, () =>
-            parseFloat((job.gpuVramGb * (0.72 + Math.random() * 0.18)).toFixed(1))
-          );
+        setTimeout(
+          async () => {
+            const globalStep = (epoch - 1) * stepsPerEpoch + step;
+            const progress = globalStep / totalSteps;
+            const trainLoss = parseFloat(
+              (2.4 - progress * 1.6 + (Math.random() - 0.5) * 0.06).toFixed(4),
+            );
+            const valLoss =
+              step === stepsPerEpoch
+                ? parseFloat(
+                    (trainLoss + 0.08 + Math.random() * 0.03).toFixed(4),
+                  )
+                : null;
+            const lr = parseFloat(
+              (2e-4 * Math.cos(progress * Math.PI * 0.5)).toFixed(6),
+            );
+            const tps = Math.round(1850 + Math.random() * 350);
+            const sps = parseFloat((tps / 512).toFixed(3));
+            const gpuCount = Math.min(
+              Math.max(Math.ceil(job.gpuVramGb / 80), 1),
+              4,
+            );
+            const gpuUtilPct = Array.from({ length: gpuCount }, () =>
+              Math.round(82 + Math.random() * 15),
+            );
+            const gpuMemUsedGb = Array.from({ length: gpuCount }, () =>
+              parseFloat(
+                (job.gpuVramGb * (0.72 + Math.random() * 0.18)).toFixed(1),
+              ),
+            );
 
-          await pushMetric({ step: globalStep, epoch, timestampMs: Date.now(), trainLoss, valLoss, learningRate: lr, tokensPerSec: tps, stepsPerSec: sps, gpuUtilPct, gpuMemUsedGb });
+            await pushMetric({
+              step: globalStep,
+              epoch,
+              timestampMs: Date.now(),
+              trainLoss,
+              valLoss,
+              learningRate: lr,
+              tokensPerSec: tps,
+              stepsPerSec: sps,
+              gpuUtilPct,
+              gpuMemUsedGb,
+            });
 
-          if (step === stepsPerEpoch) {
-            const lastValLoss = valLoss!;
-            await update({ currentEpoch: epoch, progress: Math.round(progress * 85), trainLoss, valLoss: lastValLoss });
-            await pushLog(`[epoch ${epoch}/${job.totalEpochs}] train_loss=${trainLoss} val_loss=${lastValLoss} lr=${lr.toExponential(2)} tok/s=${tps} gpu_util=${gpuUtilPct[0]}%`);
-          }
-        }, 5000 + (epoch - 1) * epochInterval + (step / stepsPerEpoch) * epochInterval);
+            if (step === stepsPerEpoch) {
+              const lastValLoss = valLoss!;
+              await update({
+                currentEpoch: epoch,
+                progress: Math.round(progress * 85),
+                trainLoss,
+                valLoss: lastValLoss,
+              });
+              await pushLog(
+                `[epoch ${epoch}/${job.totalEpochs}] train_loss=${trainLoss} val_loss=${lastValLoss} lr=${lr.toExponential(2)} tok/s=${tps} gpu_util=${gpuUtilPct[0]}%`,
+              );
+            }
+          },
+          5000 +
+            (epoch - 1) * epochInterval +
+            (step / stepsPerEpoch) * epochInterval,
+        );
       }
     }
 
-    setTimeout(async () => {
-      const j = await this.jobRepo.findOne({ where: { id: jobId } });
-      const outFmt = (j?.config as any)?.outputFormat || 'gguf';
-      await update({ status: 'packaging', progress: 90 });
-      await pushLog('[packaging] Training complete. Merging LoRA adapters into base model...');
-      if (outFmt === 'fp8') {
-        await pushLog('[packaging] Converting BF16 weights → FP8 (E4M3) via AutoFP8...');
-        await pushLog('[packaging] FP8 calibration dataset: 512 samples. Activation scaling done.');
-      } else if (outFmt === 'gguf') {
-        await pushLog('[packaging] Running GGUF quantization (Q4_K_M)...');
-      } else if (outFmt === 'gptq') {
-        await pushLog('[packaging] Running GPTQ INT4 quantization...');
-      }
-    }, 5000 + job.totalEpochs * epochInterval + 500);
+    setTimeout(
+      async () => {
+        const j = await this.jobRepo.findOne({ where: { id: jobId } });
+        const outFmt = (j?.config as any)?.outputFormat || 'gguf';
+        await update({ status: 'packaging', progress: 90 });
+        await pushLog(
+          '[packaging] Training complete. Merging LoRA adapters into base model...',
+        );
+        if (outFmt === 'fp8') {
+          await pushLog(
+            '[packaging] Converting BF16 weights → FP8 (E4M3) via AutoFP8...',
+          );
+          await pushLog(
+            '[packaging] FP8 calibration dataset: 512 samples. Activation scaling done.',
+          );
+        } else if (outFmt === 'gguf') {
+          await pushLog('[packaging] Running GGUF quantization (Q4_K_M)...');
+        } else if (outFmt === 'gptq') {
+          await pushLog('[packaging] Running GPTQ INT4 quantization...');
+        }
+      },
+      5000 + job.totalEpochs * epochInterval + 500,
+    );
 
-    setTimeout(async () => {
-      const j = await this.jobRepo.findOne({ where: { id: jobId } });
-      if (!j) return;
-      const actualCost = parseFloat((j.estimatedCostUsd * (0.88 + Math.random() * 0.18)).toFixed(2));
-      const allMetrics = (j.metrics || []) as MetricPoint[];
-      const tpsValues = allMetrics.map((m) => m.tokensPerSec).filter(Boolean);
-      const memValues = allMetrics.flatMap((m) => m.gpuMemUsedGb ?? []).filter(Boolean);
-      const totalTrainingSec = j.startedAt ? Math.round((Date.now() - new Date(j.startedAt).getTime()) / 1000) : null;
-      const avgTokensPerSec = tpsValues.length ? parseFloat((tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length).toFixed(1)) : null;
-      const peakGpuMemGb = memValues.length ? parseFloat(Math.max(...memValues).toFixed(1)) : null;
-      const ttftMs = Math.round(180 + Math.random() * 120);
+    setTimeout(
+      async () => {
+        const j = await this.jobRepo.findOne({ where: { id: jobId } });
+        if (!j) return;
+        const actualCost = parseFloat(
+          (j.estimatedCostUsd * (0.88 + Math.random() * 0.18)).toFixed(2),
+        );
+        const allMetrics = (j.metrics || []) as MetricPoint[];
+        const tpsValues = allMetrics
+          .map((m) => m.tokensPerSec)
+          .filter((value): value is number => value != null);
+        const memValues = allMetrics
+          .flatMap((m) => m.gpuMemUsedGb ?? [])
+          .filter(Boolean);
+        const totalTrainingSec = j.startedAt
+          ? Math.round((Date.now() - new Date(j.startedAt).getTime()) / 1000)
+          : null;
+        const avgTokensPerSec = tpsValues.length
+          ? parseFloat(
+              (tpsValues.reduce((a, b) => a + b, 0) / tpsValues.length).toFixed(
+                1,
+              ),
+            )
+          : null;
+        const peakGpuMemGb = memValues.length
+          ? parseFloat(Math.max(...memValues).toFixed(1))
+          : null;
+        const ttftMs = Math.round(180 + Math.random() * 120);
 
-      await update({ status: 'completed', progress: 100, completedAt: new Date(), actualCostUsd: actualCost, totalTrainingSec: totalTrainingSec ?? undefined, avgTokensPerSec: avgTokensPerSec ?? undefined, peakGpuMemGb: peakGpuMemGb ?? undefined, ttftMs });
-      const outFmt2 = (j.config as any)?.outputFormat || 'gguf';
-      await pushLog('[done] Adapter checkpoint saved (32 MB).');
-      await pushLog('[done] Merged FP16 model saved (4.7 GB).');
-      if (outFmt2 === 'fp8') {
-        await pushLog('[done] FP8 (E4M3) model saved (2.4 GB) — ready for H100/vLLM inference.');
-      } else if (outFmt2 === 'gguf') {
-        await pushLog('[done] GGUF Q4_K_M quantization complete (1.3 GB).');
-      } else if (outFmt2 === 'gptq') {
-        await pushLog('[done] GPTQ INT4 quantization complete (1.2 GB).');
-      }
-      await pushLog(`[done] Summary: avg ${avgTokensPerSec} tok/s · peak GPU mem ${peakGpuMemGb} GB · TTFT ${ttftMs} ms`);
-      await pushLog('[done] Model artifacts ready for download.');
+        await update({
+          status: 'completed',
+          progress: 100,
+          completedAt: new Date(),
+          actualCostUsd: actualCost,
+          totalTrainingSec: totalTrainingSec ?? undefined,
+          avgTokensPerSec: avgTokensPerSec ?? undefined,
+          peakGpuMemGb: peakGpuMemGb ?? undefined,
+          ttftMs,
+        });
+        const outFmt2 = (j.config as any)?.outputFormat || 'gguf';
+        await pushLog('[done] Adapter checkpoint saved (32 MB).');
+        await pushLog('[done] Merged FP16 model saved (4.7 GB).');
+        if (outFmt2 === 'fp8') {
+          await pushLog(
+            '[done] FP8 (E4M3) model saved (2.4 GB) — ready for H100/vLLM inference.',
+          );
+        } else if (outFmt2 === 'gguf') {
+          await pushLog('[done] GGUF Q4_K_M quantization complete (1.3 GB).');
+        } else if (outFmt2 === 'gptq') {
+          await pushLog('[done] GPTQ INT4 quantization complete (1.2 GB).');
+        }
+        await pushLog(
+          `[done] Summary: avg ${avgTokensPerSec} tok/s · peak GPU mem ${peakGpuMemGb} GB · TTFT ${ttftMs} ms`,
+        );
+        await pushLog('[done] Model artifacts ready for download.');
 
-      const outputFormat = (j.config as any)?.outputFormat || 'gguf';
-      const baseModelId = j.baseModelId || 'llama-3.1-8b-instruct';
-      await this.artifactsService.createJobArtifacts(j.ownerId, j.id, j.modelName, baseModelId, outputFormat);
-    }, 5000 + job.totalEpochs * epochInterval + 4000);
+        const outputFormat = (j.config as any)?.outputFormat || 'gguf';
+        const baseModelId = j.baseModelId || 'llama-3.1-8b-instruct';
+        await this.artifactsService.createJobArtifacts(
+          j.ownerId,
+          j.id,
+          j.modelName,
+          baseModelId,
+          outputFormat,
+        );
+      },
+      5000 + job.totalEpochs * epochInterval + 4000,
+    );
   }
 
   findAll(ownerId: string): Promise<TrainingJob[]> {
-    return this.jobRepo.find({ where: { ownerId }, order: { createdAt: 'DESC' } });
+    return this.jobRepo.find({
+      where: { ownerId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async findOne(id: string, ownerId: string): Promise<TrainingJob> {
@@ -177,7 +433,10 @@ export class JobsService {
     return job;
   }
 
-  async getMetrics(id: string, ownerId: string): Promise<{ summary: MetricsSummary; timeSeries: MetricPoint[] }> {
+  async getMetrics(
+    id: string,
+    ownerId: string,
+  ): Promise<{ summary: MetricsSummary; timeSeries: MetricPoint[] }> {
     const job = await this.findOne(id, ownerId);
     const timeSeries = (job.metrics || []) as MetricPoint[];
     const withVal = timeSeries.filter((m) => m.valLoss != null);
@@ -197,8 +456,19 @@ export class JobsService {
   async cancel(id: string, ownerId: string): Promise<TrainingJob> {
     const job = await this.findOne(id, ownerId);
     if (['completed', 'failed', 'cancelled'].includes(job.status)) return job;
-    const logs = [...(job.logs as string[]), '[cancelled] Job cancelled by user.'];
-    await this.jobRepo.update(id, { status: 'cancelled', completedAt: new Date(), logs });
+    this.processRunner.cancel(id);
+    const timer = this.metricPollers.get(id);
+    if (timer) clearInterval(timer);
+    this.metricPollers.delete(id);
+    const logs = [
+      ...(job.logs as string[]),
+      '[cancelled] Job cancelled by user.',
+    ];
+    await this.jobRepo.update(id, {
+      status: 'cancelled',
+      completedAt: new Date(),
+      logs,
+    });
     return this.jobRepo.findOne({ where: { id } }) as Promise<TrainingJob>;
   }
 }

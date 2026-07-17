@@ -11,11 +11,14 @@
 
 ## Current implementation status
 
-The public web training flow remains **simulated**. The repository contains
-standalone Hugging Face `trl`/PEFT training scripts under `ml-tools/train/`,
-but they are not yet fully connected to the NestJS job backend: browser-launched
-jobs still use timer-driven progress and generated loss curves. A real CUDA
-QLoRA run on rented GPU infrastructure has **not** yet been completed.
+The public demo defaults to **simulated** training. The backend now has an
+opt-in local process worker (`TRAINING_EXECUTION_MODE=local`) that launches
+the approved Hugging Face script, streams logs/metrics, and handles process
+cancellation and failure. That backend path has not yet been verified
+end-to-end on the rented CUDA worker, and it does not yet upload artifacts to
+persistent object storage. A standalone CUDA QLoRA run has been completed;
+its exact logs, cost, memory trace, adapter checksum, and tuned benchmark
+results still need to be added to the repository report template.
 
 Dataset parsing is real, and the backend can collect real NVIDIA telemetry via
 `nvidia-smi` when it runs on a GPU host. Neither of those milestones means the

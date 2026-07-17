@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsInt, IsNumber, IsOptional, IsEnum, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsEnum,
+  Min,
+  Max,
+} from 'class-validator';
 
 export enum TrainingMethod {
   FULL_FINE_TUNE = 'full_fine_tune',
@@ -19,6 +27,13 @@ export class TrainingConfigDto {
   @ApiProperty({ example: 'model-id-here' })
   @IsString()
   modelId: string;
+
+  @ApiPropertyOptional({
+    description: 'Catalog model ID when modelId refers to a user model',
+  })
+  @IsOptional()
+  @IsString()
+  baseModelId?: string;
 
   @ApiProperty({ example: 'dataset-id-here' })
   @IsString()
@@ -58,12 +73,22 @@ export class TrainingConfigDto {
   @Max(256)
   batchSize?: number;
 
-  @ApiPropertyOptional({ description: 'LoRA rank — lower = fewer params', default: 16 })
+  @ApiPropertyOptional({
+    description: 'LoRA rank — lower = fewer params',
+    default: 16,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(256)
   loraRank?: number;
+
+  @ApiPropertyOptional({ default: 1024, minimum: 128, maximum: 262144 })
+  @IsOptional()
+  @IsInt()
+  @Min(128)
+  @Max(262144)
+  maxSeqLength?: number;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()
@@ -73,17 +98,26 @@ export class TrainingConfigDto {
   @IsOptional()
   useGradientCheckpointing?: boolean;
 
-  @ApiPropertyOptional({ description: 'Compression mode for distill/prune jobs', example: 'quantize' })
+  @ApiPropertyOptional({
+    description: 'Compression mode for distill/prune jobs',
+    example: 'quantize',
+  })
   @IsOptional()
   @IsString()
   compressionMethod?: string;
 
-  @ApiPropertyOptional({ description: 'Compression target (e.g. int8, 30, half-layers)', example: 'int8' })
+  @ApiPropertyOptional({
+    description: 'Compression target (e.g. int8, 30, half-layers)',
+    example: 'int8',
+  })
   @IsOptional()
   @IsString()
   compressionTarget?: string;
 
-  @ApiPropertyOptional({ description: 'Output format (gguf, gptq, fp8, merged)', example: 'gguf' })
+  @ApiPropertyOptional({
+    description: 'Output format (gguf, gptq, fp8, merged)',
+    example: 'gguf',
+  })
   @IsOptional()
   @IsString()
   outputFormat?: string;

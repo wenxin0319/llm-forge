@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Opt-in local training worker
+
+- Added `TRAINING_EXECUTION_MODE=mock|local`. Mock remains the default for the
+  public demo; local mode launches the repository's approved SFT script
+  without a shell, using catalog-resolved Hugging Face model IDs and confined
+  dataset/output roots.
+- Added stdout/stderr and `metrics.jsonl` ingestion, persisted completion or
+  failure state, actual elapsed-time cost calculation, and SIGTERM
+  cancellation.
+- Fixed catalog-model launch resolution and added the previously rejected
+  `baseModelId`/`maxSeqLength` DTO fields.
+- Added security tests for explicit enablement, dataset traversal rejection,
+  and method allowlisting. A documented CUDA run through this backend path and
+  persistent artifact upload are still pending.
+
 ### Deployment security documentation
 
 - Documented every backend/frontend environment variable, initial secret
@@ -27,8 +42,9 @@
   the full test run.
 - This does not provision GPUs or make web-launched training real. The public
   flow remains simulated, the standalone Hugging Face scripts are not fully
-  connected to `JobsService`, and no CUDA QLoRA run on rented GPU
-  infrastructure has been completed.
+  connected to `JobsService`, and the completed standalone CUDA QLoRA run
+  still needs its logs, cost, memory trace, adapter checksum, and tuned scores
+  committed to the report template.
 
 ### Benchmark preparation
 
