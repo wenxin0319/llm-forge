@@ -1,226 +1,293 @@
-# Qwen3-30B-A3B — LLM Forge Research Note
+# Qwen3-30B-A3B: QLoRA Fine-Tuning and NVFP4 Deployment Report
 
-*16 Jul 2026. Internal note, not a Qwen/Alibaba publication. All benchmark
-figures are published scores from Qwen's own model cards (see Sources) — no
-new evaluation was run for this report. Rendered version with charts and
-diagrams: see the published Artifact linked from this session.*
+*16 July 2026 — LLM Forge engineering report*
 
-A 30.5B-parameter mixture-of-experts model that activates only 3.3B per
-token — and, after its 2507 post-training refresh, closes most of the gap to
-frontier dense models on reasoning and agentic benchmarks. This covers the
-architecture, the training pipeline, and what adding it to the LLM Forge
-catalog would take.
+## Executive summary
 
-| | |
-|---|---|
-| Total / active params | 30.5B / 3.3B |
-| Experts / active per token | 128 / 8 |
-| Native context (2507 releases) | 262,144 |
-| License | Apache 2.0 (Qwen3 family) |
+Qwen3-30B-A3B is a 30.5B-parameter mixture-of-experts (MoE) model that
+activates 3.3B parameters per token. The recommended path is to fine-tune the
+BF16 checkpoint with **QLoRA (NF4)**, merge the adapter back into BF16, and
+then apply **NVFP4 post-training quantization (PTQ)** for Blackwell inference.
+QLoRA and NVFP4 solve different problems: QLoRA lowers training memory;
+NVFP4 lowers serving memory and latency.
 
-## 1. Architecture
+Published open-checkpoint evidence indicates:
 
-48 transformer layers, grouped-query attention (32 query heads, 4 key-value
-heads), SwiGLU, rotary position embeddings, pre-norm RMSNorm. 29.9B of the
-30.5B total parameters are non-embedding. Every forward pass activates only
-**3.3B** of them.
+- **2.2–2.7x higher token generation speed** for an NVFP4 Qwen3-Coder
+  30B-A3B sibling versus full precision on the same DGX Spark and vLLM setup.
+- **3.3x lower model disk/GPU-memory requirement** for NVIDIA's
+  Qwen3-30B-A3B NVFP4 checkpoint versus BF16.
+- **1.33 points lower OpenLLM v1 average** (73.25 to 71.92), or 98.19%
+  score recovery, and **2.49 points lower HumanEval_64 pass@2** (93.62 to
+  91.13), or 97.34% recovery, in Red Hat's Qwen3-30B-A3B NVFP4 evaluation.
 
-Each MoE layer routes every token to 8 of 128 experts via a learned router,
-trained with a **global-batch load-balancing loss** that encourages
-specialization across the full batch rather than per-sequence. Notably, the
-design has **no shared expert** — a departure from Qwen2.5-MoE's
-architecture.
+The headline conclusion is therefore supported for general and coding
+workloads: NVFP4 provides a large performance improvement with a small
+quality gap. It is not lossless, however; Red Hat's harder OpenLLM v2 suite
+fell 3.79 points (52.78 to 48.99), so reasoning-heavy use cases need a
+task-specific acceptance gate.
 
-Compute cost tracks the 3.3B active figure, but every one of the 128 experts
-must still be resident in memory, so **VRAM scales with the full 30.5B, not
-the active 3.3B** — the efficiency gain is speed, not footprint (see §5).
+## 1. How we would train it
 
-**Where it sits in the Qwen3 family:**
+### Recommendation: QLoRA, not full fine-tuning
 
-| Model | Total params | Active params | Native context | In LLM Forge catalog? |
-|---|---|---|---|---|
-| Qwen2.5-7B Instruct | 7B | — (dense) | 131,072 | Yes |
-| **Qwen3-30B-A3B** | **30.5B** | **3.3B** | **262,144¹** | **No — proposed, §5** |
-| Qwen3-235B-A22B | 235B | 22B | 262,144 | Yes |
-
-¹ 32,768 native on the original release, extendable to 131,072 via YaRN; the
-2507 releases (§3) extend native context to 262,144, with Thinking-2507's
-docs additionally citing support for up to 1M tokens under specialized
-configuration.
-
-The gap this fills: today's catalog jumps straight from a 7B dense model to
-a 235B/22B-active frontier MoE. Qwen3-30B-A3B sits in the middle — MoE
-efficiency at a size a single high-end GPU can serve.
-
-## 2. Pretraining
-
-The whole Qwen3 family was pretrained on **36 trillion tokens** across 119
-languages and dialects — roughly double Qwen2.5's ~18T across 29 languages —
-in three stages:
-
-| Stage | Tokens | Sequence length | Focus |
+| Method | Frozen base | Base precision during training | Practical assessment |
 |---|---|---|---|
-| S1 — General | >30T | 4,096 | Broad language proficiency and world knowledge, all 119 languages |
-| S2 — Reasoning | ~5T | 4,096 | Higher-quality data weighted toward STEM, code, reasoning, synthetic examples; faster LR decay |
-| S3 — Long-context | 100s of billions | 32,768 | 75% long text (16K–32K tokens) / 25% medium (4K–16K) to extend usable context |
+| Full fine-tuning | No | BF16 plus gradients and optimizer states | Not recommended; several hundred GB of aggregate training memory |
+| LoRA | Yes | BF16 | Strong baseline, but roughly 61 GB for weights alone before activations and adapter state |
+| **QLoRA** | **Yes** | **4-bit NF4, BF16 compute** | **Recommended; lowest-cost route with LoRA-like trainable capacity** |
 
-## 3. Post-training — the online fine-tuned version
+QLoRA keeps the pretrained model frozen in 4-bit NormalFloat (NF4), trains
+small low-rank adapters, uses double quantization, and computes in BF16. This
+is the memory-efficient training method introduced by the
+[QLoRA paper](https://arxiv.org/abs/2305.14314). It should not be confused
+with NVFP4: the former is the training representation, while the latter is
+the final Blackwell serving representation.
 
-Qwen's flagship dense models get a four-stage post-training pipeline: long
-chain-of-thought cold start, reasoning-focused RL, thinking-mode fusion,
-then general-domain RL. For a model this size, Qwen instead used
-**strong-to-weak distillation** from a larger already-post-trained teacher —
-roughly **1/10 the GPU-hours** of the full four-stage route. This is the
-practical, cost-aware alignment path smaller models actually ship with.
+### Proposed recipe
 
-The distilled checkpoints are what's actually hosted online as "the
-fine-tuned version" of this base model — two variants, released July 2025:
+1. Start from `Qwen/Qwen3-30B-A3B-Instruct-2507` for a non-thinking
+   assistant, or the Thinking-2507 checkpoint if long-form reasoning is the
+   product requirement. Do not mix their chat templates or evaluation
+   protocols.
+2. Curate and deduplicate the domain SFT set; retain a fixed validation set
+   and a production-like prompt set that is never used for training.
+3. Run QLoRA with NF4 double quantization, BF16 compute, gradient
+   checkpointing, rank 16 as the initial baseline, `lora_alpha=32`, and
+   dropout 0.05. Target all linear transformer layers; PEFT's
+   [QLoRA guidance](https://github.com/huggingface/peft/blob/main/docs/source/developer_guides/lora.md)
+   recommends `target_modules="all-linear"` to approach full-fine-tuning
+   quality. For this MoE, confirm that routed expert projections are included
+   by inspecting the reported trainable modules.
+4. Train for 1–3 epochs with effective batch size determined by token count,
+   evaluate every fixed number of tokens, and select the checkpoint on the
+   domain validation metric rather than training loss alone.
+5. Optionally apply DPO after SFT if preference pairs exist. Keep this as a
+   separate experiment so its quality effect is measurable.
+6. Merge the selected adapter into a BF16 copy. Evaluate the merged BF16
+   model first; this separates fine-tuning regressions from quantization
+   regressions.
+7. Quantize the merged model to NVFP4 with NVIDIA Model Optimizer using a
+   representative calibration sample, then repeat the identical evaluation
+   and serving benchmark. NVIDIA's open checkpoint quantizes transformer
+   linear weights and activations and reports approximately 3.3x lower disk
+   and GPU-memory requirements ([model card](https://huggingface.co/nvidia/Qwen3-30B-A3B-NVFP4)).
 
-- **[Qwen3-30B-A3B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507)**
-  — non-thinking only (no `<think>` blocks); tuned for instruction-following,
-  general chat, coding, tool use.
-- **[Qwen3-30B-A3B-Thinking-2507](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507)**
-  — extended reasoning mode, longer chain-of-thought budget; scores highest
-  of the three variants on nearly every reasoning benchmark (§4).
+The repository already contains `trl`/PEFT/bitsandbytes SFT and DPO scripts
+under `ml-tools/train/`. They support QLoRA, but only their CUDA guard—not a
+real QLoRA run—has been verified locally. Before a production run, update
+the current default module targeting to `all-linear`, verify expert coverage,
+and run a short CUDA smoke test. The estimates and external benchmarks in
+this report are not results produced by LLM Forge.
 
-The original Qwen3-30B-A3B could switch between thinking and non-thinking
-mode in a single checkpoint (`enable_thinking`, or `/think` / `/no_think`
-soft switches); the 2507 refresh split that into two specialized checkpoints
-instead, each pushed further in its lane.
+## 2. Performance speedup
 
-## 4. Benchmark results
+**Direct answer:** the controlled full-precision-versus-NVFP4 benchmark shows
+**2.18x to 2.74x higher token generation speed**, depending on concurrency.
+At concurrency 1, throughput increases from 29.86 to 64.99 tokens/s
+(2.18x). At concurrency 32, it increases from 8.06 to 21.75 tokens/s per
+request (2.70x). Time to first token is 1.9–2.6x faster, total latency is
+2.0–2.6x lower, and request throughput is 2.0–2.5x higher. These are the
+report's defensible **speedup ratios**; the much larger aggregate H100/B200
+numbers below are capacity measurements under different workloads, not
+additional speedup ratios.
 
-**What post-training bought — base vs. Instruct-2507:**
+No same-checkpoint, same-hardware BF16-versus-NVFP4 benchmark was found for
+the exact Instruct-2507 model. The closest controlled open result is
+[OPENZEKA's Qwen3-Coder-30B-A3B-Instruct-NVFP4](https://huggingface.co/OPENZEKA/Qwen3-Coder-30B-A3B-Instruct-NVFP4),
+which shares the 30B-A3B architecture. It compared full precision and NVFP4
+on the same DGX Spark, vLLM runtime, ~128-token prompts, 128-token maximum
+outputs, and concurrency levels 1–32.
 
-| Benchmark | Base | Instruct-2507 | Δ |
-|---|---:|---:|---:|
-| MMLU-Pro | 69.1 | 78.4 | +9.3 |
-| GPQA | 54.8 | 70.4 | +15.6 |
-| AIME25 | 21.6 | 61.3 | +39.7 |
-| LiveCodeBench v6 | 29.0 | 43.2 | +14.2 |
-| IFEval | 83.7 | 84.7 | +1.0 |
-| Arena-Hard v2 | 24.8 | 69.0 | +44.2 |
+| Concurrency | Full precision | NVFP4 | Speedup |
+|---:|---:|---:|---:|
+| 1 | 29.86 tokens/s | 64.99 tokens/s | **2.18x** |
+| 2 | 24.16 tokens/s | 53.75 tokens/s | **2.22x** |
+| 4 | 17.30 tokens/s | 42.44 tokens/s | **2.45x** |
+| 8 | 12.79 tokens/s | 33.59 tokens/s | **2.63x** |
+| 16 | 9.96 tokens/s | 27.29 tokens/s | **2.74x** |
+| 32 | 8.06 tokens/s | 21.75 tokens/s | **2.70x** |
 
-**Full comparison across categories** (Base / Instruct-2507 / Thinking-2507 /
-best-in-class from Qwen's published comparison set — GPT-4o, Gemini 2.5,
-DeepSeek-V3, Qwen3-235B; not exhaustive):
+The same benchmark reports 2–3x lower time to first token, 50–60% lower
+inter-token latency, 2–2.6x shorter total latency, and 2–2.5x higher request
+throughput. These numbers are a planning proxy, not a guaranteed result for
+the chosen Qwen3 checkpoint. Kernel version, context length, batch mix, and
+GPU all materially affect throughput. NVFP4's native acceleration also
+requires NVIDIA Blackwell; older GPUs should use a supported FP8/INT4 path
+and be benchmarked separately.
 
-| Category | Benchmark | Base | Instruct-2507 | Thinking-2507 | Best-in-class |
-|---|---|---:|---:|---:|---|
-| Knowledge | MMLU-Pro | 69.1 | 78.4 | 80.9 | 81.2 (DeepSeek-V3) |
-| Knowledge | MMLU-Redux | 84.1 | 89.3 | 91.4 | 91.3 (GPT-4o) |
-| Knowledge | GPQA | 54.8 | 70.4 | 73.4 | 78.3 (Gemini-2.5) |
-| Knowledge | SuperGPQA | 42.2 | 53.4 | 56.8 | 57.3 (DeepSeek-V3) |
-| Reasoning | AIME25 | 21.6 | 61.3 | 85.0 | 85.0 (Thinking-2507) |
-| Reasoning | HMMT25 | 12.0 | 43.0 | 71.4 | 71.4 (Thinking-2507) |
-| Reasoning | ZebraLogic | 33.2 | 90.0 | — | 90.0 (Instruct-2507) |
-| Reasoning | LiveBench 20241125 | 59.4 | 69.0 | 76.8 | 76.8 (Thinking-2507) |
-| Coding | LiveCodeBench v6 | 29.0 | 43.2 | 66.0 | 66.0 (Thinking-2507) |
-| Coding | MultiPL-E | 74.6 | 83.8 | — | 83.8 (Instruct-2507) |
-| Coding | Aider-Polyglot | 24.4 | 35.6 | — | 59.6 (Qwen3-235B) |
-| Alignment | IFEval | 83.7 | 84.7 | 88.9 | 88.9 (Thinking-2507) |
-| Alignment | Arena-Hard v2 | 24.8 | 69.0 | 56.0 | 69.0 (Instruct-2507) |
-| Alignment | Creative Writing v3 | 68.1 | 86.0 | 84.4 | 86.0 (Instruct-2507) |
-| Agent | BFCL-v3 | 58.6 | 65.1 | 72.4 | 72.4 (Thinking-2507) |
-| Agent | TAU1-Retail | 38.3 | 59.1 | 67.8 | 67.8 (Thinking-2507) |
-| Agent | TAU2-Airline | 18.0 | 38.0 | 58.0 | 58.0 (Thinking-2507) |
-| Multilingual | MMLU-ProX | 65.1 | 72.0 | 76.4 | 78.3 (Gemini-2.5) |
-| Multilingual | PolyMATH | 23.3 | 43.1 | 52.6 | 52.6 (Thinking-2507) |
+### GPU comparison: V100, H100, and B200
 
-**Reading this honestly**: post-training roughly triples the AIME25 score
-(21.6 → 61.3) and nearly triples Arena-Hard v2 (24.8 → 69.0) without
-touching the base weights' capacity — it's redirecting what the model
-already knows, not adding knowledge. On several reasoning and agentic
-benchmarks, Instruct-2507 and especially Thinking-2507 land within a few
-points of Gemini 2.5 and DeepSeek-V3 despite activating roughly an order of
-magnitude fewer parameters per token. That's the actual news here, more than
-any single score.
+The 2.18–2.74x result above was measured on a DGX Spark (Blackwell) and must
+not be copied directly to V100 or H100. NVFP4 is a Blackwell-native Tensor
+Core format. A checkpoint may be stored in four bits on older GPUs, but
+without native FP4 arithmetic the runtime must dequantize it or use a
+different kernel; that is not the same performance path.
 
-## 5. Deployment on LLM Forge
+| GPU | Architecture | Memory / bandwidth | Native useful precision | Qwen3-30B-A3B training | Recommended serving path |
+|---|---|---|---|---|---|
+| V100 | Volta | 16 or 32 GB HBM2; 0.9–1.134 TB/s | FP16 Tensor Cores; no BF16, FP8, or FP4 | QLoRA only; 32 GB is tight, so use at least 2×32 GB for useful sequence lengths | INT4 weight-only if supported, otherwise multi-GPU FP16; **do not use NVFP4 as a speed claim** |
+| H100 SXM | Hopper | 80 GB HBM3; 3.35 TB/s | BF16, FP16, FP8, INT8; no native FP4 | QLoRA comfortably on one GPU; BF16 LoRA may fit only with short sequences/checkpointing and should be profiled | **FP8** on one GPU is the preferred high-throughput path; use BF16 as the quality baseline |
+| B200 | Blackwell | 180 GB HBM3e; approximately 8 TB/s per GPU | BF16, FP8, **FP4/NVFP4** | QLoRA or BF16 LoRA on one GPU; best of the three for long context and large batches | **NVFP4** with TensorRT-LLM or a runtime with native ModelOpt FP4 kernels |
 
-MoE VRAM math is unforgiving: the router can send a token to any of the 128
-experts, so **all of them must be resident** — there's no memory discount
-for the 3.3B/30.5B activation ratio, only a compute one.
+The hardware figures come from NVIDIA's
+[V100 data sheet](https://images.nvidia.com/content/technologies/volta/pdf/volta-v100-datasheet-update-us-1165301-r5.pdf),
+[H100 specifications](https://www.nvidia.com/en-us/data-center/h100/), and
+[DGX B200 specifications](https://www.nvidia.com/en-au/data-center/dgx-b200/).
+DGX B200 exposes 1,440 GB and 64 TB/s across eight GPUs, giving 180 GB and
+8 TB/s per GPU.
 
-**Weight footprint by precision:**
+#### Published B200 result
 
-| Precision | Bytes/param | Weights-only footprint |
-|---|---:|---:|
-| BF16 / FP16 | 2 | ~61 GB |
-| INT8 | 1 | ~31 GB |
-| INT4 (Q4-class) | 0.5 | ~15 GB |
+NVIDIA's reproducible
+[TensorRT-LLM performance overview](https://nvidia.github.io/TensorRT-LLM/latest/developer-guide/perf-overview.html#qwen3-30b-a3b)
+reports the following Qwen3-30B-A3B FP4 offline maximum-throughput results on
+one B200 (`TP1`). These are aggregate serving throughput with all requests
+queued, not interactive single-user decode speed, so they are intentionally
+kept separate from OPENZEKA's per-request numbers above.
 
-Weights only — add KV cache (grows with context length and batch size) and
-activation memory on top; third-party estimates put full-context BF16
-inference around 65–98 GB depending on sequence length.
+| Input / output length | B200 FP4 output throughput per GPU |
+|---:|---:|
+| 1,000 / 1,000 | **26,971 tokens/s** |
+| 1,024 / 1,024 | **26,611 tokens/s** |
+| 1,024 / 8,192 | **13,497 tokens/s** |
+| 1,024 / 32,768 | **4,494 tokens/s** |
+| 8,192 / 1,024 | **5,735 tokens/s** |
+| 32,768 / 1,024 | **1,265 tokens/s** |
 
-**Fine-tuning methods, estimated.** Full fine-tuning holds optimizer state
-*per parameter*, not per active parameter — mixed-precision AdamW is roughly
-16–18 bytes/param (bf16 weights + fp32 master weights + fp32 gradients + two
-fp32 Adam moments). LoRA/QLoRA freeze the base weights, so cost is dominated
-by the frozen-weight precision plus a small adapter:
+NVIDIA does not publish V100 and H100 measurements for this model in that
+same test table. Additional community and open-runtime results do provide
+useful planning numbers, but their workloads differ from the B200 test:
 
-| Method | Est. VRAM | Fits on |
-|---|---:|---|
-| QLoRA | ~24 GB | 1× RTX 4090, or 1× A100-40GB |
-| LoRA | ~68 GB | 1× A100-80GB (tight) or 2× smaller GPUs |
-| Full fine-tune | ~550 GB | Multi-GPU (see below) |
+| GPU | Published model / format | Workload | Published result |
+|---|---|---|---:|
+| V100 32 GB | Qwen3-30B-A3B NVFP4 through `vllm-rs`, software FP4 | Decode benchmark; batch/prompt details not disclosed on summary page | **67.10 tokens/s** |
+| H100 80 GB, 1 GPU | Qwen3-Coder-30B-A3B-Instruct, vLLM 0.10.1.1, auto dtype | 10,000 random requests, 128 input + 128 output, max concurrency 1,000 | **17,349 aggregate output tokens/s** |
+| H100 80 GB, 2 GPUs, TP2 | Same as preceding row | Same workload | **26,266 aggregate output tokens/s** |
+| H100 80 GB, 4 GPUs, TP4 | Same as preceding row | Same workload | **25,804 aggregate output tokens/s** |
+| H100 80 GB, 8 GPUs, TP8 | Same as preceding row | Same workload | **29,226 aggregate output tokens/s** |
+| B200 180 GB, 1 GPU | Qwen3-30B-A3B FP4, TensorRT-LLM | Offline maximum throughput, 1,024 input + 1,024 output | **26,611 aggregate output tokens/s** |
 
-**Tie-back to this platform's own cluster**: LLM Forge's simulated GPU
-cluster (`/gpu-cluster`) models 4×H100-80GB + 8×A100-80GB + 8×A100-40GB. A
-full fine-tune of this model at ~550 GB wouldn't fit on the H100 nodes alone
-(320 GB) — it would need to pool H100 and A100-80 capacity, or fall back to
-LoRA/QLoRA, which is what most real deployments of a model this size
-actually do.
+The V100 figure comes from the open
+[`vllm-rs` performance table](https://pypi.org/project/vllm-rs/0.11.5/).
+It explicitly labels execution as **software FP4**, so it demonstrates that
+the checkpoint can run—not that V100 has native NVFP4 acceleration. The H100
+figures come from a published
+[vLLM TP/DP benchmark](https://pavlokhmel.com/llm_inferencing_benchmark_with_vllm_benchmark_script_tensor_parallel_vs_data_parallel.html)
+on a Dell PowerEdge XE9680. Its one-H100 result also reported 3,815 ms mean
+TTFT and 83 ms mean inter-token latency. The weak TP scaling is important:
+eight-way tensor parallelism delivered only 1.68x the aggregate throughput
+of one H100 for this test, while consuming eight GPUs.
 
-These are estimates from standard bytes-per-parameter rules of thumb, not
-measured on real hardware — flagged for verification against the training
-scripts in `ml-tools/train/` the day this actually runs on a GPU (§6).
+These values are **not a cross-GPU speed ranking**: the V100 number is decode
+speed, the H100 numbers use 128/128 requests at high concurrency, and the
+B200 number is an offline 1,024/1,024 maximum-throughput test. A valid
+comparison must run the same checkpoint family, runtime, request count,
+input/output lengths, and latency constraints:
 
-**Proposed `model-catalog.service.ts` entry:**
-
-```ts
-{
-  id: 'qwen3-30b-a3b',
-  name: 'Qwen3-30B-A3B',
-  params: '30.5B total', paramsB: 3.3, contextWindow: 262144,
-  license: 'Apache 2.0', licenseType: 'apache-2.0',
-  useCase: 'Mid-size MoE — frontier-adjacent reasoning/agentic quality at a size a single high-end GPU can serve',
-  huggingfaceId: 'Qwen/Qwen3-30B-A3B-Instruct-2507',
-  architecture: 'Qwen-MoE', tags: ['multilingual', 'reasoning', 'moe', 'agentic'],
-  vramRequiredGb: { qlora: 24, lora: 68, full: 550 },
-  supportedMethods: ['qlora', 'lora', 'dpo'],
-  isMoE: true, activeParams: '3.3B active',
-}
+```text
+V100: FP16 or supported INT4 baseline
+H100: BF16 baseline and FP8 optimized model
+B200: BF16 baseline and NVFP4 optimized model
 ```
 
-`paramsB` follows this catalog's existing convention of storing the *active*
-parameter count for MoE entries (see Qwen3-235B-A22B's `paramsB: 22`) — it's
-what actually drives inference throughput, even though VRAM planning above
-uses the total.
+For capacity planning, one 32 GB V100 cannot hold the roughly 61 GB BF16
+weights; one 80 GB H100 can hold them but leaves limited space for KV cache;
+one 180 GB B200 has substantially more room for KV cache and batching. The
+NVFP4 checkpoint reduces model storage/memory by approximately 3.3x, but
+only B200 can combine that footprint reduction with native NVFP4 Tensor Core
+execution.
 
-## 6. Fit with this platform's training scripts
+## 3. Quality gap
 
-The real training scripts in `ml-tools/train/` — built on
-`trl.SFTTrainer`/`DPOTrainer` and `peft` — aren't architecture-specific; they
-load any causal LM through `AutoModelForCausalLM`, so Qwen3-30B-A3B would
-work with **zero script changes**. Adding it to the platform is a
-catalog-entry change (§5), not a training-code change.
+**Direct answer:** the measured gap is **1.33 points on OpenLLM v1**
+(73.25 BF16 versus 71.92 NVFP4, **98.19% quality retained**) and **2.49
+points on HumanEval_64** (93.62 versus 91.13, **97.34% retained**). This is
+a minimal average gap for general knowledge and coding. The harder OpenLLM
+v2 suite loses 3.79 points (92.81% retained), so the claim does not apply
+uniformly to every reasoning task.
 
-What's genuinely unverified is running it: those scripts were smoke-tested
-on `Qwen/Qwen3-0.6B` — two orders of magnitude smaller — on CPU,
-specifically to confirm correctness without provisioning paid GPU time (per
-current project scope; see `ml-tools/train/README.md` for the full verified
-list — LoRA, prefix-tuning, full fine-tune, and DPO all ran end-to-end on
-real data). A first real benchmark on this model specifically would need an
-actual rented GPU meeting the QLoRA footprint above (§5) at minimum, and
-would be the natural next step once that's greenlit.
+The most directly relevant public comparison is Red Hat's open
+[Qwen3-30B-A3B-NVFP4 model card](https://huggingface.co/RedHatAI/Qwen3-30B-A3B-NVFP4).
+Its evaluation commands are published and compare the unquantized model with
+the NVFP4 checkpoint.
+
+| Evaluation | BF16/reference | NVFP4 | Absolute gap | Score recovery |
+|---|---:|---:|---:|---:|
+| OpenLLM v1 average | 73.25 | 71.92 | **-1.33** | **98.19%** |
+| OpenLLM v2 average | 52.78 | 48.99 | **-3.79** | **92.81%** |
+| HumanEval_64 pass@2 | 93.62 | 91.13 | **-2.49** | **97.34%** |
+
+OpenLLM v1 individual recovery ranges from 96.19% to 101.20%. OpenLLM v2
+is less uniform: IFEval retains 98.10% and MuSR 98.99%, while BBH retains
+83.01% and MMLU-Pro 89.81%. This makes “minimal quality gap” a defensible
+summary for the broad v1 average and coding result, but not for every hard
+reasoning task.
+
+NVIDIA's separately produced
+[Qwen3-30B-A3B NVFP4 checkpoint](https://huggingface.co/nvidia/Qwen3-30B-A3B-NVFP4)
+shows a similarly small or neutral gap on several tasks: BF16 to FP4 is
+0.78 to 0.77 on MMLU-Pro, 0.62 to 0.61 on GPQA Diamond, and unchanged at
+0.96 on MATH-500. Some generated-answer benchmarks score higher after
+quantization (for example LiveCodeBench 0.51 to 0.65), which should be
+treated as evaluation variance or a calibration effect—not evidence that
+four-bit precision inherently improves the model.
+
+### Acceptance criteria for our model
+
+Ship NVFP4 only if all of the following hold against the merged BF16 model
+under identical prompts and decoding settings:
+
+- domain-task score loss is at most 2% relative;
+- instruction-following and safety pass rates fall by no more than 1 point;
+- no critical domain slice regresses by more than 3 points;
+- human pairwise preference is statistically non-inferior; and
+- measured serving throughput is at least 2x higher on the target Blackwell
+  deployment at the expected context-length and concurrency distribution.
+
+## 4. Conclusion
+
+**We obtain a large performance speedup with a minimal quality gap.** The
+best supported summary is **2.18–2.74x faster generation while retaining
+98.19% of broad OpenLLM v1 quality and 97.34% of HumanEval coding quality**.
+
+The recommended production path is **QLoRA fine-tuning followed by BF16
+adapter merge and NVFP4 post-training quantization**. It avoids the memory
+cost of full fine-tuning and converts the final model into the format that
+Blackwell hardware accelerates.
+
+The available open evidence supports the target claim: a closely matched
+30B-A3B deployment achieved **2.18–2.74x higher generation speed**, while
+the exact Qwen3-30B-A3B NVFP4 evaluation retained **98.19% of OpenLLM v1
+quality and 97.34% of HumanEval quality**. In practical terms, that is a
+large performance speedup with a minimal quality gap for general and coding
+workloads. The qualification matters: difficult reasoning benchmarks show
+larger regressions, so the final decision must be based on our own domain
+evaluation rather than the aggregate headline alone.
+
+Across the requested GPUs, **B200 is the only target for the full NVFP4
+speedup claim** and reaches up to 26,971 aggregate output tokens/s per GPU in
+NVIDIA's offline benchmark. H100 remains an excellent one-GPU deployment but
+should use FP8; a separate high-concurrency vLLM test measured 17,349
+aggregate output tokens/s on one H100. V100 requires aggressive memory
+management and receives no native NVFP4 acceleration, although `vllm-rs`
+reports 67.10 tokens/s using software FP4. Quality acceptance criteria remain
+the same across hardware; performance must be measured separately for each
+precision/runtime combination.
 
 ## Sources
 
-1. Qwen Team. *Qwen3 Technical Report.* [arXiv:2505.09388](https://arxiv.org/html/2505.09388v1) — pretraining pipeline, token counts, post-training stages, MoE design.
-2. [huggingface.co/Qwen/Qwen3-30B-A3B](https://huggingface.co/Qwen/Qwen3-30B-A3B) — base model card: architecture parameters, context length, thinking-mode toggle.
-3. [huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507) — Instruct-2507 model card and benchmark table.
-4. [huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507](https://huggingface.co/Qwen/Qwen3-30B-A3B-Thinking-2507) — Thinking-2507 model card and benchmark table.
-5. [apxml.com/models/qwen3-30b-a3b](https://apxml.com/models/qwen3-30b-a3b) — third-party VRAM/deployment estimates, cross-checked against this note's own bytes-per-parameter calculation.
-6. Repo: `src/model-catalog/model-catalog.service.ts` (existing Qwen2.5-7B and Qwen3-235B-A22B entries) and `ml-tools/train/` (training scripts referenced in §6).
+1. Qwen Team, [Qwen3 Technical Report](https://arxiv.org/abs/2505.09388).
+2. Qwen, [Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507).
+3. Dettmers et al., [QLoRA: Efficient Finetuning of Quantized LLMs](https://arxiv.org/abs/2305.14314).
+4. Hugging Face PEFT, [LoRA/QLoRA developer guide](https://github.com/huggingface/peft/blob/main/docs/source/developer_guides/lora.md).
+5. NVIDIA, [Qwen3-30B-A3B-NVFP4 model card](https://huggingface.co/nvidia/Qwen3-30B-A3B-NVFP4).
+6. Red Hat AI, [Qwen3-30B-A3B-NVFP4 model card and evaluation](https://huggingface.co/RedHatAI/Qwen3-30B-A3B-NVFP4).
+7. OPENZEKA, [Qwen3-Coder-30B-A3B-Instruct-NVFP4 performance comparison](https://huggingface.co/OPENZEKA/Qwen3-Coder-30B-A3B-Instruct-NVFP4).
+8. NVIDIA, [Introducing NVFP4 for Efficient and Accurate Low-Precision Inference](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/).
+9. NVIDIA, [V100 Tensor Core GPU data sheet](https://images.nvidia.com/content/technologies/volta/pdf/volta-v100-datasheet-update-us-1165301-r5.pdf).
+10. NVIDIA, [H100 Tensor Core GPU specifications](https://www.nvidia.com/en-us/data-center/h100/).
+11. NVIDIA, [DGX B200 specifications](https://www.nvidia.com/en-au/data-center/dgx-b200/).
+12. NVIDIA TensorRT-LLM, [Qwen3-30B-A3B performance overview](https://nvidia.github.io/TensorRT-LLM/latest/developer-guide/perf-overview.html#qwen3-30b-a3b).
+13. `vllm-rs`, [published V100 software-FP4 performance table](https://pypi.org/project/vllm-rs/0.11.5/).
+14. Pavlo Khmel, [Qwen3-Coder-30B-A3B vLLM tensor/data-parallel benchmark on H100](https://pavlokhmel.com/llm_inferencing_benchmark_with_vllm_benchmark_script_tensor_parallel_vs_data_parallel.html).
