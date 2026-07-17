@@ -19,6 +19,9 @@ export interface Dataset {
   fileSize: number;
   recordCount: number;
   huggingfaceId?: string;
+  errorMessage?: string;
+  detectedFormat?: string;
+  columns?: string[];
   createdAt: string;
 }
 

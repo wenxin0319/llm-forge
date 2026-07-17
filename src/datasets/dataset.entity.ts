@@ -35,6 +35,15 @@ export class Dataset {
   @Column({ nullable: true })
   huggingfaceId: string;
 
+  @Column({ nullable: true })
+  errorMessage: string;
+
+  @Column({ nullable: true })
+  detectedFormat: string;
+
+  @Column({ type: 'simple-array', nullable: true })
+  columns: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 

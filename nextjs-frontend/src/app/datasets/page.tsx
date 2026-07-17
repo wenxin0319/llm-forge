@@ -140,6 +140,9 @@ export default function DatasetsPage() {
                       </div>
                       {d.description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{d.description}</div>}
                       {d.huggingfaceId && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: 2 }}>{d.huggingfaceId}</div>}
+                      {d.status === 'error' && d.errorMessage && (
+                        <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 2 }}>{d.errorMessage}</div>
+                      )}
                     </td>
                     <td><span className="badge badge-cyan">{d.type.toUpperCase()}</span></td>
                     <td><StatusBadge status={d.status} /></td>
