@@ -10,4 +10,7 @@ ml-tools/quantize/.venv/
 ml-tools/quantize/out/
 ml-tools/train/.venv/
 ml-tools/train/out/
+ml-tools/gguf/.venv/
+ml-tools/gguf/out/
+ml-tools/gguf/vendor-llama-cpp/
 ml-tools/**/__pycache__/
