@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Real GPU telemetry path
+
+- Added an `nvidia-smi` backend collector for utilization, HBM usage,
+  temperature, power draw/limit, and SM clock on every visible NVIDIA GPU.
+  API responses now identify their `source` (`nvidia-smi` or `mock`) and
+  collection time instead of presenting randomized demo nodes as real data.
+- Added `GPU_METRICS_MODE=auto|real|mock`: `real` fails closed when telemetry
+  is unavailable, `auto` falls back with an explicit warning, and `mock`
+  preserves deterministic demo behavior for hosts without GPUs.
+- Added unit coverage for real summaries, mock fallback, invalid config, and
+  fail-closed operation. Corrected the stale API-root unit test discovered by
+  the full test run.
+- This does not provision GPUs or make web-launched training real. The public
+  flow remains simulated, the standalone Hugging Face scripts are not fully
+  connected to `JobsService`, and no CUDA QLoRA run on rented GPU
+  infrastructure has been completed.
+
 ## v0.1.0 — 2026-07-16
 
 First tagged release. LLM Forge is a fine-tuning platform demo — most of the
@@ -8,6 +27,7 @@ still simulated by design, so this changelog tracks which parts are real
 versus simulated as clearly as it tracks feature additions.
 
 ### Security
+
 - **Fixed**: hardcoded admin backdoor credentials (`cwx0319@gmail.com` /
   `demo1234`) and a hardcoded JWT signing-secret fallback were removed from
   source. Admin account creation is now entirely `ADMIN_EMAIL`/
@@ -17,6 +37,7 @@ versus simulated as clearly as it tracks feature additions.
   missing.
 
 ### Real (not simulated)
+
 - **Dataset processing**: uploads are now actually parsed and validated —
   JSONL is streamed and JSON-validated with chat/alpaca/DPO schema
   detection, CSV goes through a real RFC 4180 streaming parser, Parquet
@@ -42,6 +63,7 @@ versus simulated as clearly as it tracks feature additions.
   and not run on rented GPUs — that's a separate infra/spending decision.
 
 ### Still simulated
+
 - **Training execution** in the product itself: `jobs.service.ts` still
   runs a `setTimeout` chain with fabricated loss curves — no GPU is
   provisioned, no real training happens through the website. The real
@@ -55,6 +77,7 @@ versus simulated as clearly as it tracks feature additions.
   wired up.
 
 ### Fixed
+
 - Frontend production build (`next build`) was failing its type-check step
   on the Distill & Compress review page (`.filter(Boolean)` doesn't narrow
   `null` for TypeScript) — this had been broken since that page was added,
@@ -68,6 +91,7 @@ versus simulated as clearly as it tracks feature additions.
   record count when HF's datasets-server has no real stats for a dataset.
 
 ### Not started
+
 - First real fine-tuning benchmark + report (GPU-hours/cost/memory vs. the
   estimator) — needs an actual rented GPU.
 - Cross-vendor AMD ROCm support — new territory, scope TBD.
