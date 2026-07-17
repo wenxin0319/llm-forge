@@ -23,6 +23,9 @@ platform currently provisions a GPU or executes training. On hosts without
 NVIDIA telemetry, the cluster endpoint returns an explicitly labeled demo
 fallback.
 
+The dated component-by-component status and evidence requirements are tracked
+in [`docs/roadmap-status.md`](docs/roadmap-status.md).
+
 ---
 
 ## What can I do with LLM Forge?
@@ -194,6 +197,10 @@ npm run dev
 ---
 
 ## Deployment
+
+Credential inventory, initial setup, password/JWT/database rotation, and the
+redacted screenshot checklist are documented in
+[`docs/deployment-secrets.md`](docs/deployment-secrets.md).
 
 | Service  | Platform | URL                                                               |
 | -------- | -------- | ----------------------------------------------------------------- |

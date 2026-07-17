@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Deployment security documentation
+
+- Documented every backend/frontend environment variable, initial secret
+  setup, administrator password rotation, JWT and database credential
+  rotation, verification steps, audit commands, and requirements for
+  redacted deployment screenshots. No deployment screenshot is claimed until
+  dashboard access is available.
+- Added a dated evidence roadmap that separates implemented code from
+  operational verification and links each component to its next measurable
+  completion step.
+
 ### Real GPU telemetry path
 
 - Added an `nvidia-smi` backend collector for utilization, HBM usage,
