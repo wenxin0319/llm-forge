@@ -539,7 +539,7 @@ export default function DistillPage() {
                     { label: 'GPU', value: `${GPU_TIERS.find((g) => g.id === gpuType)?.label} × ${gpuCount}` },
                     { label: 'Output Format', value: OUTPUT_FORMATS.find((f) => f.id === outputFormat)?.label || outputFormat },
                     method !== 'quantize' ? { label: 'Recovery Epochs', value: String(epochs) } : null,
-                  ] as ({ label: string; value: string } | null)[]).filter(Boolean).map(({ label, value }) => (
+                  ] as ({ label: string; value: string } | null)[]).filter((row): row is { label: string; value: string } => row !== null).map(({ label, value }) => (
                     <div key={label} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{label}</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{value}</div>
