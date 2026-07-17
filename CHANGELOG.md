@@ -19,6 +19,14 @@
   connected to `JobsService`, and no CUDA QLoRA run on rented GPU
   infrastructure has been completed.
 
+### Benchmark preparation
+
+- Added a Qwen3-30B-A3B CUDA QLoRA run-report template with official Qwen
+  reference scores prefilled and separate blank columns for the locally
+  reproduced base and LLM Forge-tuned adapter. The template captures exact
+  commands, environment revisions, GPU telemetry, duration, cost, loss curve,
+  adapter checksum, raw evidence, acceptance gates, and results commit.
+
 ## v0.1.0 — 2026-07-16
 
 First tagged release. LLM Forge is a fine-tuning platform demo — most of the
