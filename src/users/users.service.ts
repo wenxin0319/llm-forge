@@ -1,38 +1,62 @@
-import { Injectable, ConflictException, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 
-const ADMIN_EMAIL = 'cwx0319@gmail.com';
-const ADMIN_NAME  = 'Wenxin Cheng';
-
 @Injectable()
 export class UsersService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {}
 
-  /** Runs once after the app fully starts — seeds the admin account */
+  /**
+   * Runs once after the app fully starts. Admin identity comes entirely from
+   * ADMIN_EMAIL / ADMIN_PASSWORD env vars — nothing is hardcoded. If either is
+   * unset, no admin account is created or modified. If the account already
+   * exists and ADMIN_PASSWORD no longer matches its stored hash, the hash is
+   * rotated to match — so rotating the admin password in production is just
+   * changing the env var and redeploying, no manual DB access required.
+   */
   async onApplicationBootstrap() {
-    const existing = await this.userRepo.findOne({ where: { email: ADMIN_EMAIL } });
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminEmail || !adminPassword) {
+      this.logger.warn('ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin account bootstrap');
+      return;
+    }
+
+    const existing = await this.userRepo.findOne({ where: { email: adminEmail } });
     if (!existing) {
       const admin = this.userRepo.create({
-        email: ADMIN_EMAIL,
-        name: ADMIN_NAME,
-        passwordHash: await bcrypt.hash('demo1234', 12),
+        email: adminEmail,
+        name: 'Admin',
+        passwordHash: await bcrypt.hash(adminPassword, 12),
         role: 'admin',
         plan: 'enterprise',
         gpuQuotaHours: 1000,
         usedGpuHours: 0,
       });
       await this.userRepo.save(admin);
-      console.log(`[LLM Forge] Admin account seeded: ${ADMIN_EMAIL}`);
-    } else if (existing.role !== 'admin') {
-      // Promote to admin if already exists as regular user
-      await this.userRepo.update(existing.id, { role: 'admin', plan: 'enterprise', gpuQuotaHours: 1000 });
-      console.log(`[LLM Forge] Existing account promoted to admin: ${ADMIN_EMAIL}`);
+      this.logger.log(`Admin account seeded: ${adminEmail}`);
+      return;
+    }
+
+    const updates: Partial<User> = {};
+    if (existing.role !== 'admin') {
+      updates.role = 'admin';
+      updates.plan = 'enterprise';
+      updates.gpuQuotaHours = 1000;
+    }
+    if (!(await bcrypt.compare(adminPassword, existing.passwordHash))) {
+      updates.passwordHash = await bcrypt.hash(adminPassword, 12);
+    }
+    if (Object.keys(updates).length > 0) {
+      await this.userRepo.update(existing.id, updates);
+      this.logger.log(`Admin account synced from env: ${adminEmail}`);
     }
   }
 

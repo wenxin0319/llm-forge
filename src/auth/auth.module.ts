@@ -11,10 +11,11 @@ import { UsersModule } from '../users/users.module';
     UsersModule,
     PassportModule,
     JwtModule.registerAsync({
-      useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'llmforge-dev-secret',
-        signOptions: { expiresIn: '7d' },
-      }),
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) throw new Error('JWT_SECRET environment variable must be set');
+        return { secret, signOptions: { expiresIn: '7d' } };
+      },
     }),
   ],
   providers: [AuthService, JwtStrategy],
