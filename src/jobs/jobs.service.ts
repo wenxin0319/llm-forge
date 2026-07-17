@@ -151,7 +151,11 @@ export class JobsService {
     if (timer) clearInterval(timer);
     this.metricPollers.delete(jobId);
 
-    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    const job = await this.jobRepo
+      .createQueryBuilder('job')
+      .addSelect('job.outputPath')
+      .where('job.id = :jobId', { jobId })
+      .getOne();
     if (!job || job.status === 'cancelled') return;
     const completedAt = new Date();
     const totalTrainingSec = job.startedAt
@@ -190,6 +194,32 @@ export class JobsService {
           '[worker] Training process completed successfully.',
         ],
       });
+      const method = (job.config as { method?: string }).method;
+      if (
+        job.outputPath &&
+        ['lora', 'qlora', 'prefix_tuning'].includes(method || '')
+      ) {
+        try {
+          const artifact = await this.artifactsService.createLocalAdapter({
+            ownerId: job.ownerId,
+            jobId: job.id,
+            modelName: job.modelName,
+            baseModelId: job.baseModelId,
+            outputPath: job.outputPath,
+          });
+          await this.pushLog(
+            jobId,
+            `[artifact] Registered ${artifact.filename}; sha256=${artifact.sha256}`,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          await this.pushLog(
+            jobId,
+            `[artifact] Adapter registration failed: ${message}`,
+          );
+        }
+      }
     } else {
       const reason =
         errorMessage ||

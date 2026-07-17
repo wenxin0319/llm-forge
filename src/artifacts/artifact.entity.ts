@@ -1,4 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+} from 'typeorm';
 
 @Entity('artifacts')
 export class Artifact {
@@ -31,6 +36,18 @@ export class Artifact {
 
   @Column({ nullable: true })
   downloadUrl: string;
+
+  @Column({ nullable: true })
+  filename: string;
+
+  @Column({ type: 'bigint', nullable: true })
+  fileSizeBytes: number;
+
+  @Column({ nullable: true })
+  sha256: string;
+
+  @Column({ default: '', select: false })
+  storagePath: string;
 
   @CreateDateColumn()
   createdAt: Date;

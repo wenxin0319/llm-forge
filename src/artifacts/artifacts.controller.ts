@@ -1,8 +1,25 @@
-import { Controller, Get, Post, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Request,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ArtifactsService } from './artifacts.service';
-import { IsEnum, IsString } from 'class-validator';
+import { IsEnum } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 class QuantizeDto {
@@ -31,10 +48,27 @@ export class ArtifactsController {
     return this.artifactsService.findOne(id, req.user.id);
   }
 
+  @Get(':id/download')
+  @ApiOperation({ summary: 'Download an authenticated local artifact' })
+  async download(
+    @Param('id') id: string,
+    @Request() req,
+    @Res() response: Response,
+  ) {
+    const file = await this.artifactsService.getDownload(id, req.user.id);
+    return response.download(file.path, file.filename);
+  }
+
   @Post(':id/quantize')
-  @ApiOperation({ summary: 'Trigger quantization of a merged artifact (GGUF/GPTQ/AWQ)' })
+  @ApiOperation({
+    summary: 'Trigger quantization of a merged artifact (GGUF/GPTQ/AWQ)',
+  })
   quantize(@Param('id') id: string, @Body() dto: QuantizeDto, @Request() req) {
-    return this.artifactsService.scheduleQuantization(id, req.user.id, dto.format);
+    return this.artifactsService.scheduleQuantization(
+      id,
+      req.user.id,
+      dto.format,
+    );
   }
 
   @Delete(':id')

@@ -16,7 +16,9 @@ opt-in local process worker (`TRAINING_EXECUTION_MODE=local`) that launches
 the approved Hugging Face script, streams logs/metrics, and handles process
 cancellation and failure. That backend path has not yet been verified
 end-to-end on the rented CUDA worker, and it does not yet upload artifacts to
-persistent object storage. A standalone CUDA QLoRA run has been completed;
+persistent object storage. Local worker adapters are registered with SHA-256
+and available through an authenticated local download endpoint. A standalone
+CUDA QLoRA run has been completed;
 its exact logs, cost, memory trace, adapter checksum, and tuned benchmark
 results still need to be added to the repository report template.
 

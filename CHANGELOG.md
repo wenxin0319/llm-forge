@@ -17,6 +17,15 @@
   and method allowlisting. A documented CUDA run through this backend path and
   persistent artifact upload are still pending.
 
+### Local adapter artifacts
+
+- Successful local LoRA/QLoRA/prefix jobs now register the actual
+  `adapter_model.safetensors` file with exact byte size and SHA-256 instead of
+  creating a fabricated storage URL.
+- Added an owner-authorized download endpoint with output-root confinement and
+  tests for checksum metadata and path traversal rejection. Persistent object
+  storage and real GGUF/GPTQ/FP8 backend jobs remain pending.
+
 ### Deployment security documentation
 
 - Documented every backend/frontend environment variable, initial secret
