@@ -1,11 +1,19 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 — 2026-07-20
+
+This release advances beyond the v0.1.0 demo/mock baseline by publishing a
+real standalone CUDA QLoRA test performed with LLM Forge training utilities
+on a rented Vast.ai NVIDIA A100-SXM4-80GB. The benchmark scores and loss
+samples in the v0.2 report are measurements from that run, not generated mock
+data. The public web demo still defaults to simulated execution, and no claim
+is made that the A100 run was launched through the public web job runner. The
+backend path is not yet verified end-to-end on a rented CUDA worker.
 
 ### Qwen3 QLoRA run report
 
 - Replaced the blank Qwen3-30B-A3B template with the submitted 16 July 2026
-  LLM Forge v0.1 result from a rented Vast.ai A100 QLoRA run, including tuned
+  LLM Forge v0.2 result from a rented Vast.ai A100 QLoRA run, including tuned
   benchmark scores and training loss samples. Raw reproducibility evidence
   remains to be attached.
 
@@ -60,7 +68,7 @@
   flow remains simulated, the standalone Hugging Face scripts are not fully
   connected to `JobsService`, and the completed standalone CUDA QLoRA run's
   raw logs, cost, memory trace, evaluation commands, and adapter checksum
-  still need to be attached to the submitted v0.1 report.
+  still need to be attached to the submitted v0.2 report.
 
 ### Benchmark preparation
 
@@ -69,7 +77,7 @@
   reproduced base and LLM Forge-tuned adapter. The template captures exact
   commands, environment revisions, GPU telemetry, duration, cost, loss curve,
   adapter checksum, raw evidence, acceptance gates, and results commit.
-  It was subsequently replaced by the submitted v0.1 rented-A100 result above.
+  It was subsequently replaced by the submitted v0.2 rented-A100 result above.
 
 ## v0.1.0 — 2026-07-16
 

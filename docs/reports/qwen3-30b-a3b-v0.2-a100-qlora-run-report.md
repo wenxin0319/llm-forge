@@ -1,8 +1,10 @@
-# Qwen3-30B-A3B LLM Forge v0.1 Rented-A100 QLoRA Run Report
+# Qwen3-30B-A3B LLM Forge v0.2 Rented-A100 QLoRA Run Report
 
 > **Release result:** This report records the standalone rented Vast.ai A100
-> QLoRA run submitted as the LLM Forge v0.1 result. It is not a result from
-> the public web demo or the in-platform job runner.
+> QLoRA run submitted as the LLM Forge v0.2 real-test result. Its measurements
+> are not mock data. It is not a result from the public web demo or the
+> in-platform job runner. The backend path is not yet verified end-to-end on a
+> rented CUDA worker.
 
 
 ## 1. Run Identity
@@ -10,7 +12,7 @@
 | Field              | Value                              |
 | ------------------ | ---------------------------------- |
 | Report date        | `2026-07-16`                       |
-| LLM Forge release  | `v0.1`                             |
+| LLM Forge release  | `v0.2`                             |
 | Provider           | Vast.ai                            |
 | GPU                | `1 × NVIDIA A100-SXM4-80GB`        |
 | CUDA / driver      | `12.4 / 525.60.13`    |
@@ -63,6 +65,6 @@ The selected benchmarks cover knowledge, mathematical reasoning, coding, instruc
 
 ## 5. Conclusion
 
-This LLM Forge v0.1 result records a complete standalone QLoRA fine-tuning
+This LLM Forge v0.2 result records a complete standalone QLoRA fine-tuning
 workflow using the LLM Forge training utilities on one rented Vast.ai
 NVIDIA A100-SXM4-80GB GPU.
