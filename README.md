@@ -18,10 +18,10 @@ cancellation and failure. The backend path is not yet verified end-to-end on
 a rented CUDA worker, and it does not yet upload artifacts to
 persistent object storage. Local worker adapters are registered with SHA-256
 and available through an authenticated local download endpoint. A standalone
-CUDA QLoRA run has been completed on a rented Vast.ai A100; this is the LLM
-Forge v0.2 real-test result, compared with the v0.1 demo/mock baseline. Its
-submitted benchmark scores and loss curve are measured run results, not mock
-data, and are recorded in the
+CUDA QLoRA run has been completed on a rented Vast.ai A100. v0.1 did not
+include a documented rented-GPU result; v0.2 publishes this real standalone
+test. Its submitted benchmark scores and loss curve are measured run results
+and are recorded in the
 [`Qwen3-30B-A3B v0.2 rented-A100 QLoRA run report`](docs/reports/qwen3-30b-a3b-v0.2-a100-qlora-run-report.md).
 The dataset/output paths, immutable revisions, raw logs, cost, memory trace,
 evaluation commands, and adapter checksum still need to be attached for full

@@ -1,12 +1,12 @@
 # LLM Forge evidence roadmap
 
-Status date: **17 July 2026**
+Status date: **20 July 2026**
 
 “Implemented” means code and local verification exist. “Operationally
 verified” requires evidence from the deployed service or target GPU. These
 states are kept separate throughout this roadmap.
 
-| Component                        | Status as of 17 Jul 2026                                                      | Evidence in repository                                                                                                                            | Next evidence-producing step                                                                                                                            |                Estimated effort |
+| Component                        | Status as of 20 Jul 2026                                                      | Evidence in repository                                                                                                                            | Next evidence-producing step                                                                                                                            |                Estimated effort |
 | -------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------: |
 | Credential and secret management | **Implemented; deployment screenshots pending**                               | Environment-only admin bootstrap and rotation in `src/users/users.service.ts`; fail-fast JWT secret; `.env.example`; `docs/deployment-secrets.md` | Capture provider configuration and password-rotation screenshots with all values and identifiers redacted                                               |                         2–3 hrs |
 | Dataset processing               | **Implemented for JSONL/CSV/Parquet; deployed scale test pending**            | `src/datasets/dataset-parsers.ts`; real record counts/schema validation; sample datasets                                                          | Upload a larger fixture through the deployed API and capture throughput, process memory, validation failures, and stored metadata                       |                        6–10 hrs |

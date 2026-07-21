@@ -2,13 +2,12 @@
 
 ## v0.2.0 — 2026-07-20
 
-This release advances beyond the v0.1.0 demo/mock baseline by publishing a
-real standalone CUDA QLoRA test performed with LLM Forge training utilities
-on a rented Vast.ai NVIDIA A100-SXM4-80GB. The benchmark scores and loss
-samples in the v0.2 report are measurements from that run, not generated mock
-data. The public web demo still defaults to simulated execution, and no claim
-is made that the A100 run was launched through the public web job runner. The
-backend path is not yet verified end-to-end on a rented CUDA worker.
+v0.1.0 did not include a documented rented-GPU training result. v0.2.0
+publishes a real standalone CUDA QLoRA test performed with LLM Forge training
+utilities on a rented Vast.ai NVIDIA A100-SXM4-80GB. The benchmark scores and
+loss samples in the v0.2 report are measurements from that run, not generated
+data. This result is scoped to the standalone training workflow. The backend
+path is not yet verified end-to-end on a rented CUDA worker.
 
 ### Qwen3 QLoRA run report
 

@@ -15,11 +15,15 @@
 | LLM Forge release  | `v0.2`                             |
 | Provider           | Vast.ai                            |
 | GPU                | `1 × NVIDIA A100-SXM4-80GB`        |
-| CUDA / driver      | `12.4 / 525.60.13`    |
+| CUDA toolkit / NVIDIA driver (operator-reported) | `12.4 / 525.60.13` |
 | Base checkpoint    | `Qwen/Qwen3-30B-A3B-Instruct-2507` |
 | Training method    | `QLoRA, 4-bit NF4, BF16 compute`   |
 
-## 2. Training Command
+## 2. Submitted Training Command
+
+The command below is the submitted run configuration. Dataset and output
+paths are redacted placeholders; the repository does not contain the resolved
+paths.
 
 ```bash
 cd ml-tools/train
@@ -37,9 +41,16 @@ python sft_train.py \
   --use-flash-attention
 ```
 
-Environment information was recorded using `git rev-parse HEAD`, `nvidia-smi`, `python --version`, and `pip freeze`.
+The operator reports that environment information was recorded using
+`git rev-parse HEAD`, `nvidia-smi`, `python --version`, and `pip freeze`; those
+raw captures are not included in this release.
 
 ## 3. Benchmark Evaluation Results
+
+The published-reference column is sourced from the official
+[Qwen3-30B-A3B-Instruct-2507 model card](https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507).
+The tuned column contains the submitted measurements from this run; raw
+evaluation outputs and harness commands are not included in this release.
 
 | Category              | Benchmark        | Metric | Qwen published reference | LLM Forge QLoRA tuned |
 | --------------------- | ---------------- | ------ | -----------------------: | --------------------: |
