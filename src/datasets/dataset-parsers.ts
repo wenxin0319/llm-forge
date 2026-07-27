@@ -51,18 +51,33 @@ export async function parseCsv(filePath: string): Promise<ParseResult> {
   return new Promise((resolve) => {
     let count = 0;
     let columns: string[] | undefined;
-    const parser = csvParse({ columns: true, skip_empty_lines: true, relax_column_count: true, bom: true });
+    let settled = false;
+    const settle = (result: ParseResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
 
-    fs.createReadStream(filePath)
+    const parser = csvParse({ columns: true, skip_empty_lines: true, relax_column_count: true, bom: true });
+    const source = fs.createReadStream(filePath);
+    // `.pipe()` does not forward source-stream errors (e.g. ENOENT, EACCES,
+    // mid-read I/O failures) to the destination — without this listener an
+    // unreadable file throws an unhandled 'error' event and crashes the
+    // whole process, not just this upload.
+    source.on('error', (err) =>
+      settle({ recordCount: count, errorMessage: `Could not read file: ${err.message}` }),
+    );
+
+    source
       .pipe(parser)
       .on('data', (record: Record<string, unknown>) => {
         count++;
         if (!columns) columns = Object.keys(record);
       })
-      .on('error', (err) => resolve({ recordCount: count, errorMessage: `CSV parse error: ${err.message}` }))
+      .on('error', (err) => settle({ recordCount: count, errorMessage: `CSV parse error: ${err.message}` }))
       .on('end', () => {
-        if (count === 0) resolve({ recordCount: 0, errorMessage: 'No data rows found (header only, or empty file)' });
-        else resolve({ recordCount: count, columns });
+        if (count === 0) settle({ recordCount: 0, errorMessage: 'No data rows found (header only, or empty file)' });
+        else settle({ recordCount: count, columns });
       });
   });
 }
