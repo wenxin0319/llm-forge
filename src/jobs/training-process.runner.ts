@@ -121,6 +121,10 @@ export class TrainingProcessRunner {
     return outputPath;
   }
 
+  getPid(jobId: string): number | undefined {
+    return this.processes.get(jobId)?.pid;
+  }
+
   cancel(jobId: string): boolean {
     const child = this.processes.get(jobId);
     if (!child) return false;

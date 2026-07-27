@@ -76,6 +76,7 @@ export interface GpuNode {
   powerLimitWatts: number;
   smClockMhz: number;
   nvlinkBandwidthGbps?: number;
+  jobId?: string;
   status: 'idle' | 'active' | 'hot' | 'offline';
 }
 

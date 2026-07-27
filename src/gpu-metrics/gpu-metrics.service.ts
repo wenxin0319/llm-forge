@@ -57,6 +57,43 @@ const NVIDIA_SMI_FIELDS = [
 export class GpuMetricsService {
   private readonly mockNodes: GpuNode[] = this.generateMockCluster();
   private lastNodes: GpuNode[] = [];
+  private readonly activeJobPids = new Map<string, number>();
+
+  /** Called by JobsService once it knows the PID of a locally spawned training process. */
+  registerActiveJob(jobId: string, pid: number): void {
+    this.activeJobPids.set(jobId, pid);
+  }
+
+  unregisterActiveJob(jobId: string): void {
+    this.activeJobPids.delete(jobId);
+  }
+
+  /**
+   * Real per-job GPU numbers for the currently registered job, sampled from
+   * nvidia-smi at call time. Used to fill in the gpuUtilPct/gpuMemUsedGb
+   * fields that the HF Trainer callback intentionally leaves empty (see
+   * ml-tools/train/metrics_callback.py) since the training process itself
+   * has no view of device-level telemetry.
+   */
+  sampleJobGpuUsage(
+    jobId: string,
+  ): { utilPct: number[]; memUsedGb: number[] } | null {
+    if (this.getMode() === 'mock') return null;
+    const pid = this.activeJobPids.get(jobId);
+    if (!pid) return null;
+
+    try {
+      const nodes = this.queryNvidiaSmi();
+      const pidToGpuUuid = this.queryComputeAppGpus();
+      const gpuUuid = pidToGpuUuid.get(pid);
+      if (!gpuUuid) return null;
+      const node = nodes.find((n) => n.id === gpuUuid);
+      if (!node) return null;
+      return { utilPct: [node.utilizationPct], memUsedGb: [node.memoryUsedGb] };
+    } catch {
+      return null;
+    }
+  }
 
   getClusterMetrics(): ClusterMetrics {
     const mode = this.getMode();
@@ -64,6 +101,7 @@ export class GpuMetricsService {
     if (mode !== 'mock') {
       try {
         const nodes = this.queryNvidiaSmi();
+        this.attachJobCorrelation(nodes);
         this.lastNodes = nodes;
         return this.summarize(nodes, 'nvidia-smi');
       } catch (error) {
@@ -161,6 +199,42 @@ export class GpuMetricsService {
             ? 'active'
             : 'idle',
     };
+  }
+
+  /** Maps process id -> GPU uuid for currently running CUDA compute processes. */
+  private queryComputeAppGpus(): Map<number, string> {
+    const map = new Map<number, string>();
+    try {
+      const output = execFileSync(
+        'nvidia-smi',
+        ['--query-compute-apps=pid,gpu_uuid', '--format=csv,noheader,nounits'],
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => {
+          const [pidField, uuidField] = line.split(',').map((v) => v.trim());
+          const pid = Number(pidField);
+          if (Number.isFinite(pid) && uuidField) map.set(pid, uuidField);
+        });
+    } catch {
+      // No compute processes, older driver, or nvidia-smi unavailable —
+      // job correlation is best-effort and falls back to untagged nodes.
+    }
+    return map;
+  }
+
+  private attachJobCorrelation(nodes: GpuNode[]): void {
+    if (this.activeJobPids.size === 0) return;
+    const pidToGpuUuid = this.queryComputeAppGpus();
+    for (const [jobId, pid] of this.activeJobPids) {
+      const gpuUuid = pidToGpuUuid.get(pid);
+      if (!gpuUuid) continue;
+      const node = nodes.find((n) => n.id === gpuUuid);
+      if (node) node.jobId = jobId;
+    }
   }
 
   private number(value: string, field: string): number {

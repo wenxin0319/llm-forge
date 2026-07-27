@@ -5,11 +5,13 @@ import { JobsController } from './jobs.controller';
 import { TrainingJob } from './job.entity';
 import { ArtifactsModule } from '../artifacts/artifacts.module';
 import { TrainingProcessRunner } from './training-process.runner';
+import { GpuMetricsModule } from '../gpu-metrics/gpu-metrics.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([TrainingJob]),
     forwardRef(() => ArtifactsModule),
+    GpuMetricsModule,
   ],
   providers: [JobsService, TrainingProcessRunner],
   controllers: [JobsController],

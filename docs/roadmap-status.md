@@ -1,18 +1,18 @@
 # LLM Forge evidence roadmap
 
-Status date: **20 July 2026**
+Status date: **26 July 2026**
 
 “Implemented” means code and local verification exist. “Operationally
 verified” requires evidence from the deployed service or target GPU. These
 states are kept separate throughout this roadmap.
 
-| Component                        | Status as of 20 Jul 2026                                                      | Evidence in repository                                                                                                                            | Next evidence-producing step                                                                                                                            |                Estimated effort |
+| Component                        | Status as of 26 Jul 2026                                                      | Evidence in repository                                                                                                                            | Next evidence-producing step                                                                                                                            |                Estimated effort |
 | -------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------: |
 | Credential and secret management | **Implemented; deployment screenshots pending**                               | Environment-only admin bootstrap and rotation in `src/users/users.service.ts`; fail-fast JWT secret; `.env.example`; `docs/deployment-secrets.md` | Capture provider configuration and password-rotation screenshots with all values and identifiers redacted                                               |                         2–3 hrs |
 | Dataset processing               | **Implemented for JSONL/CSV/Parquet; deployed scale test pending**            | `src/datasets/dataset-parsers.ts`; real record counts/schema validation; sample datasets                                                          | Upload a larger fixture through the deployed API and capture throughput, process memory, validation failures, and stored metadata                       |                        6–10 hrs |
 | Standalone training scripts      | **v0.2 rented-A100 CUDA QLoRA result completed; evidence package partial**     | `ml-tools/train/`; submitted Vast.ai A100 v0.2 real-test report with measured benchmark scores and loss samples                                   | Add immutable model/dataset revisions, resolved paths/config, raw logs, GPU-hours/cost, memory trace, evaluation commands, and adapter checksum          |                         2–4 hrs |
 | In-platform training execution   | **Partial: secure local worker implemented; CUDA backend run pending**        | Explicit mock/local modes; catalog allowlist; shell-free launch; confined paths; log/metric streaming; cancellation/failure state; tests          | Deploy on the CUDA worker, run through API/UI, verify restart recovery, and attach persistent artifacts                                                 |                       20–35 hrs |
-| GPU telemetry                    | **Implemented collector; live job correlation pending**                       | Real `nvidia-smi` collector, fail-closed mode, labeled mock fallback, and unit tests in `src/gpu-metrics/` (commit `a4c2cbc`)                     | Run on the same CUDA worker as training, capture a time series, attach job ID, and optionally add DCGM                                                  |    8–16 hrs after worker access |
+| GPU telemetry                    | **Implemented collector with job correlation; live worker run pending**       | Real `nvidia-smi` collector, fail-closed mode, labeled mock fallback; PID-to-GPU correlation via `nvidia-smi --query-compute-apps` tags cluster nodes with the running job ID and fills real `gpuUtilPct`/`gpuMemUsedGb` into each job's metric time series in `src/gpu-metrics/` and `src/jobs/jobs.service.ts`; unit tests cover both paths | Run a real local-worker training job on a CUDA host, confirm the job ID tag and per-step GPU numbers land correctly end to end, and optionally add DCGM |     4–8 hrs after worker access |
 | FP8 conversion                   | **Partial: standalone elementwise converter verified**                        | `ml-tools/quantize/bf16_to_fp8.py` and verification notes                                                                                         | Add calibrated/scaled conversion or retain an explicit experimental label; persist metadata and before/after accuracy                                   |                       20–30 hrs |
 | GGUF export and quantization     | **Partial: standalone GGUF verified; local adapter registration implemented** | `ml-tools/gguf/`; completed worker adapters receive exact size/SHA-256 and authenticated local downloads                                          | Launch GGUF from backend; store outputs in persistent object storage and return expiring signed downloads                                               |                       15–25 hrs |
 | GPTQ export                      | **Pending**                                                                   | UI/API format exists but artifact service simulates completion                                                                                    | Implement CUDA calibration, persist the artifact, and compare size, GPU memory, latency, and quality with GGUF/FP8                                      |         25–40 hrs plus GPU cost |
@@ -31,8 +31,10 @@ states are kept separate throughout this roadmap.
   Its raw logs, immutable revisions,
   memory/cost evidence, evaluation commands, and adapter checksum remain to
   be attached; the in-platform end-to-end run remains pending.
-- GPU telemetry can be real when the backend runs beside `nvidia-smi`, but no
-  training-job-correlated capture has been produced yet.
+- GPU telemetry can be real when the backend runs beside `nvidia-smi`, and the
+  collector now tags cluster nodes with the running job ID and writes real
+  utilization/memory into that job's metrics, but this path has only been
+  unit-tested against a mocked `nvidia-smi`, not run on an actual GPU worker.
 - Public baseline benchmark values in the submitted report are external Qwen
   references; the tuned values are recorded as results from the completed
   standalone LLM Forge run.

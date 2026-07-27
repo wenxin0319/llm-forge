@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { TrainingJob } from './job.entity';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { TrainingProcessRunner } from './training-process.runner';
+import { GpuMetricsService } from '../gpu-metrics/gpu-metrics.service';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -47,6 +48,7 @@ export class JobsService {
     @Inject(forwardRef(() => ArtifactsService))
     private readonly artifactsService: ArtifactsService,
     private readonly processRunner: TrainingProcessRunner,
+    private readonly gpuMetricsService: GpuMetricsService,
   ) {}
 
   async create(
@@ -90,6 +92,8 @@ export class JobsService {
         startedAt: new Date(),
         outputPath,
       });
+      const pid = this.processRunner.getPid(job.id);
+      if (pid) this.gpuMetricsService.registerActiveJob(job.id, pid);
       this.startMetricPolling(job.id, outputPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -114,7 +118,16 @@ export class JobsService {
       if (points.length <= consumed) return;
       const job = await this.jobRepo.findOne({ where: { id: jobId } });
       if (!job) return;
-      const additions = points.slice(consumed);
+      const gpuSample = this.gpuMetricsService.sampleJobGpuUsage(jobId);
+      const additions = points.slice(consumed).map((point) =>
+        gpuSample
+          ? {
+              ...point,
+              gpuUtilPct: gpuSample.utilPct,
+              gpuMemUsedGb: gpuSample.memUsedGb,
+            }
+          : point,
+      );
       consumed = points.length;
       const latest = additions.at(-1)!;
       const progress = job.totalEpochs
@@ -150,6 +163,7 @@ export class JobsService {
     const timer = this.metricPollers.get(jobId);
     if (timer) clearInterval(timer);
     this.metricPollers.delete(jobId);
+    this.gpuMetricsService.unregisterActiveJob(jobId);
 
     const job = await this.jobRepo
       .createQueryBuilder('job')
@@ -490,6 +504,7 @@ export class JobsService {
     const timer = this.metricPollers.get(id);
     if (timer) clearInterval(timer);
     this.metricPollers.delete(id);
+    this.gpuMetricsService.unregisterActiveJob(id);
     const logs = [
       ...(job.logs as string[]),
       '[cancelled] Job cancelled by user.',

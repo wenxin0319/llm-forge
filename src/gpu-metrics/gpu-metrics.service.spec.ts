@@ -68,4 +68,78 @@ describe('GpuMetricsService', () => {
       'GPU_METRICS_MODE must be one of: auto, real, mock',
     );
   });
+
+  it('tags the node running a registered job pid with the job id', () => {
+    process.env.GPU_METRICS_MODE = 'real';
+    const service = new GpuMetricsService();
+    const freshNode = () => [
+      {
+        id: 'GPU-abc',
+        name: 'gpu-0',
+        type: 'NVIDIA A100 80GB',
+        utilizationPct: 91,
+        memoryUsedGb: 60,
+        memoryTotalGb: 80,
+        temperatureC: 70,
+        powerWatts: 380,
+        powerLimitWatts: 400,
+        smClockMhz: 1900,
+        status: 'active' as const,
+      },
+    ];
+    jest
+      .spyOn(service as any, 'queryNvidiaSmi')
+      .mockImplementation(freshNode);
+    jest
+      .spyOn(service as any, 'queryComputeAppGpus')
+      .mockReturnValue(new Map([[4242, 'GPU-abc']]));
+
+    service.registerActiveJob('job-1', 4242);
+    const metrics = service.getClusterMetrics();
+
+    expect(metrics.nodes[0].jobId).toBe('job-1');
+
+    service.unregisterActiveJob('job-1');
+    const after = service.getClusterMetrics();
+    expect(after.nodes[0].jobId).toBeUndefined();
+  });
+
+  it('samples real utilization/memory for a registered job', () => {
+    process.env.GPU_METRICS_MODE = 'real';
+    const service = new GpuMetricsService();
+    jest.spyOn(service as any, 'queryNvidiaSmi').mockReturnValue([
+      {
+        id: 'GPU-xyz',
+        name: 'gpu-1',
+        type: 'NVIDIA H100 80GB',
+        utilizationPct: 97,
+        memoryUsedGb: 55,
+        memoryTotalGb: 80,
+        temperatureC: 76,
+        powerWatts: 600,
+        powerLimitWatts: 700,
+        smClockMhz: 1830,
+        status: 'active',
+      },
+    ]);
+    jest
+      .spyOn(service as any, 'queryComputeAppGpus')
+      .mockReturnValue(new Map([[777, 'GPU-xyz']]));
+
+    service.registerActiveJob('job-2', 777);
+    const sample = service.sampleJobGpuUsage('job-2');
+
+    expect(sample).toEqual({ utilPct: [97], memUsedGb: [55] });
+  });
+
+  it('returns null when sampling for an unregistered job or in mock mode', () => {
+    process.env.GPU_METRICS_MODE = 'real';
+    const real = new GpuMetricsService();
+    expect(real.sampleJobGpuUsage('unknown-job')).toBeNull();
+
+    process.env.GPU_METRICS_MODE = 'mock';
+    const mock = new GpuMetricsService();
+    mock.registerActiveJob('job-3', 123);
+    expect(mock.sampleJobGpuUsage('job-3')).toBeNull();
+  });
 });

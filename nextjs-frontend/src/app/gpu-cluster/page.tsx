@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Cpu, Thermometer, Zap, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '@/api/client';
@@ -150,6 +151,14 @@ export default function GpuClusterPage() {
                 <div key={node.id} className={`gpu-card ${node.status}`}>
                   <div className="gpu-name">{node.name.replace('node-', '')}</div>
                   <div className="gpu-type">{node.type}</div>
+                  {node.jobId && (
+                    <Link
+                      href={`/jobs/${node.jobId}`}
+                      style={{ fontSize: 10, color: 'var(--accent)', display: 'block', marginTop: 2 }}
+                    >
+                      running job {node.jobId.slice(0, 8)}
+                    </Link>
+                  )}
                   <div className="gpu-util" style={{ color: utilColor(node.utilizationPct) }}>{node.utilizationPct.toFixed(0)}%</div>
                   <div className="gpu-util-label">utilization</div>
                   <div className="progress-bar mb-2"><div className="progress-fill" style={{ width: `${node.utilizationPct}%` }} /></div>
