@@ -225,6 +225,35 @@ export class JobsService {
             jobId,
             `[artifact] Registered ${artifact.filename}; sha256=${artifact.sha256}`,
           );
+
+          const outputFormat = (job.config as { outputFormat?: string })
+            .outputFormat;
+          if (
+            outputFormat === 'gguf' &&
+            ['lora', 'qlora'].includes(method || '')
+          ) {
+            try {
+              const gguf =
+                await this.artifactsService.createLocalGgufLoraAdapter({
+                  ownerId: job.ownerId,
+                  jobId: job.id,
+                  modelName: job.modelName,
+                  baseModelId: job.baseModelId,
+                  outputPath: job.outputPath,
+                });
+              await this.pushLog(
+                jobId,
+                `[artifact] Exported GGUF LoRA adapter ${gguf.filename}; sha256=${gguf.sha256}`,
+              );
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              await this.pushLog(
+                jobId,
+                `[artifact] GGUF export failed: ${message}`,
+              );
+            }
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
