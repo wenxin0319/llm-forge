@@ -138,6 +138,103 @@ export class ArtifactsService {
     });
   }
 
+  /**
+   * Converts a completed full-fine-tune checkpoint to a real quantized GGUF
+   * via llama.cpp's own two-step pipeline — convert_hf_to_gguf.py (HF
+   * safetensors -> F16 GGUF) then the compiled llama-quantize binary (F16 ->
+   * a real K-quant) — the same pipeline ml-tools/gguf/convert_to_gguf.py
+   * verified against a real checkpoint (see ml-tools/gguf/README.md). Only
+   * applicable to full_fine_tune output: LoRA/QLoRA/prefix-tuning save an
+   * adapter or prefix, not a standalone HF checkpoint this script can read.
+   */
+  async createLocalMergedGgufArtifact(data: {
+    ownerId: string;
+    jobId: string;
+    modelName: string;
+    baseModelId: string;
+    outputPath: string;
+    quant?: string;
+  }): Promise<Artifact> {
+    const storageRoot = resolve(
+      process.env.TRAINING_OUTPUT_ROOT ||
+        resolve(process.cwd(), 'ml-tools/train/out/jobs'),
+    );
+    const outputPath = resolve(data.outputPath);
+    if (!outputPath.startsWith(`${storageRoot}${sep}`)) {
+      throw new ForbiddenException(
+        'Artifact path is outside the configured output root',
+      );
+    }
+    if (!existsSync(resolve(outputPath, 'config.json'))) {
+      throw new NotFoundException('Merged model checkpoint was not created');
+    }
+
+    const projectRoot = resolve(process.cwd());
+    const convertScript = resolve(
+      process.env.GGUF_HF_CONVERT_SCRIPT ||
+        resolve(
+          projectRoot,
+          'ml-tools/gguf/vendor-llama-cpp/convert_hf_to_gguf.py',
+        ),
+    );
+    const quantizeBin = resolve(
+      process.env.GGUF_QUANTIZE_BIN ||
+        resolve(
+          projectRoot,
+          'ml-tools/gguf/vendor-llama-cpp/build/bin/llama-quantize',
+        ),
+    );
+    if (!existsSync(convertScript) || !existsSync(quantizeBin)) {
+      throw new NotFoundException(
+        'GGUF conversion tooling is not installed (run ml-tools/gguf/setup.sh)',
+      );
+    }
+    const venvPython = resolve(projectRoot, 'ml-tools/gguf/.venv/bin/python');
+    const executable =
+      process.env.GGUF_EXPORT_PYTHON_EXECUTABLE ||
+      (existsSync(venvPython) ? venvPython : 'python3');
+
+    const quant = data.quant || 'Q4_K_M';
+    const f16Path = resolve(outputPath, 'merged-f16.gguf');
+    await this.runConversion(executable, [
+      convertScript,
+      '--outfile',
+      f16Path,
+      '--outtype',
+      'f16',
+      outputPath,
+    ]);
+    if (!existsSync(f16Path)) {
+      throw new NotFoundException(
+        'GGUF conversion did not produce an F16 output file',
+      );
+    }
+
+    const quantPath = resolve(outputPath, `merged-${quant.toLowerCase()}.gguf`);
+    await this.runConversion(quantizeBin, [f16Path, quantPath, quant]);
+    if (!existsSync(quantPath)) {
+      throw new NotFoundException(
+        'GGUF quantization did not produce an output file',
+      );
+    }
+
+    const fileSizeBytes = statSync(quantPath).size;
+    const sha256 = await this.hashFile(quantPath);
+    const artifact = await this.saveLocalArtifact({
+      ownerId: data.ownerId,
+      jobId: data.jobId,
+      modelName: data.modelName,
+      baseModelId: data.baseModelId,
+      format: 'gguf',
+      storagePath: quantPath,
+      fileSizeBytes,
+      sha256,
+    });
+    await this.artifactRepo.update(artifact.id, { quantBits: 4 });
+    artifact.quantBits = 4;
+    return artifact;
+  }
+
   private runConversion(executable: string, args: string[]): Promise<void> {
     return new Promise((resolvePromise, reject) => {
       const child = spawn(executable, args, {

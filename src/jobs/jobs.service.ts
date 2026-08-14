@@ -262,6 +262,32 @@ export class JobsService {
             `[artifact] Adapter registration failed: ${message}`,
           );
         }
+      } else if (job.outputPath && method === 'full_fine_tune') {
+        const outputFormat = (job.config as { outputFormat?: string })
+          .outputFormat;
+        if (outputFormat === 'gguf') {
+          try {
+            const gguf =
+              await this.artifactsService.createLocalMergedGgufArtifact({
+                ownerId: job.ownerId,
+                jobId: job.id,
+                modelName: job.modelName,
+                baseModelId: job.baseModelId,
+                outputPath: job.outputPath,
+              });
+            await this.pushLog(
+              jobId,
+              `[artifact] Exported quantized GGUF ${gguf.filename}; sha256=${gguf.sha256}`,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            await this.pushLog(
+              jobId,
+              `[artifact] GGUF export failed: ${message}`,
+            );
+          }
+        }
       }
     } else {
       const reason =
@@ -288,7 +314,7 @@ export class JobsService {
       const j = await this.jobRepo.findOne({ where: { id: jobId } });
       if (j)
         await this.jobRepo.update(jobId, {
-          logs: [...(j.logs as string[]), line],
+          logs: [...j.logs, line],
         });
     };
 
@@ -296,7 +322,7 @@ export class JobsService {
       const j = await this.jobRepo.findOne({ where: { id: jobId } });
       if (j)
         await this.jobRepo.update(jobId, {
-          metrics: [...(j.metrics as object[]), point],
+          metrics: [...j.metrics, point],
         });
     };
 
@@ -534,10 +560,7 @@ export class JobsService {
     if (timer) clearInterval(timer);
     this.metricPollers.delete(id);
     this.gpuMetricsService.unregisterActiveJob(id);
-    const logs = [
-      ...(job.logs as string[]),
-      '[cancelled] Job cancelled by user.',
-    ];
+    const logs = [...job.logs, '[cancelled] Job cancelled by user.'];
     await this.jobRepo.update(id, {
       status: 'cancelled',
       completedAt: new Date(),
