@@ -235,6 +235,100 @@ export class ArtifactsService {
     return artifact;
   }
 
+  /**
+   * Converts a completed full-fine-tune checkpoint to a real GPTQ INT4
+   * checkpoint via gptqmodel — real calibration forward passes and
+   * per-layer Hessian solve, the pipeline ml-tools/quantize/gptq_quantize.py
+   * verified against a real checkpoint (see ml-tools/quantize/README.md).
+   * Only applicable to full_fine_tune output, same reasoning as the merged
+   * GGUF path: LoRA/QLoRA/prefix-tuning save an adapter or prefix, not a
+   * standalone HF checkpoint this script can read. GPTQ output is a
+   * directory (sharded safetensors + config + tokenizer), not a single
+   * file, so it's packaged into a tarball to fit the single-file artifact
+   * download model the rest of this service uses.
+   */
+  async createLocalGptqArtifact(data: {
+    ownerId: string;
+    jobId: string;
+    modelName: string;
+    baseModelId: string;
+    outputPath: string;
+    bits?: number;
+    groupSize?: number;
+  }): Promise<Artifact> {
+    const storageRoot = resolve(
+      process.env.TRAINING_OUTPUT_ROOT ||
+        resolve(process.cwd(), 'ml-tools/train/out/jobs'),
+    );
+    const outputPath = resolve(data.outputPath);
+    if (!outputPath.startsWith(`${storageRoot}${sep}`)) {
+      throw new ForbiddenException(
+        'Artifact path is outside the configured output root',
+      );
+    }
+    if (!existsSync(resolve(outputPath, 'config.json'))) {
+      throw new NotFoundException('Merged model checkpoint was not created');
+    }
+
+    const projectRoot = resolve(process.cwd());
+    const quantizeScript = resolve(
+      process.env.GPTQ_QUANTIZE_SCRIPT ||
+        resolve(projectRoot, 'ml-tools/quantize/gptq_quantize.py'),
+    );
+    if (!existsSync(quantizeScript)) {
+      throw new NotFoundException('GPTQ quantization tooling is not installed');
+    }
+    const venvPython = resolve(
+      projectRoot,
+      'ml-tools/quantize/.venv/bin/python',
+    );
+    const executable =
+      process.env.GPTQ_EXPORT_PYTHON_EXECUTABLE ||
+      (existsSync(venvPython) ? venvPython : 'python3');
+
+    const bits = data.bits ?? 4;
+    const groupSize = data.groupSize ?? 128;
+    const quantDir = resolve(outputPath, 'gptq-int4');
+    await this.runConversion(executable, [
+      quantizeScript,
+      '--model-dir',
+      outputPath,
+      '--out',
+      quantDir,
+      '--bits',
+      String(bits),
+      '--group-size',
+      String(groupSize),
+    ]);
+    if (!existsSync(resolve(quantDir, 'config.json'))) {
+      throw new NotFoundException(
+        'GPTQ quantization did not produce an output checkpoint',
+      );
+    }
+
+    const archivePath = resolve(outputPath, 'gptq-int4.tar.gz');
+    await this.runConversion('tar', ['-czf', archivePath, '-C', quantDir, '.']);
+    if (!existsSync(archivePath)) {
+      throw new NotFoundException('Failed to package the GPTQ checkpoint');
+    }
+
+    const fileSizeBytes = statSync(archivePath).size;
+    const sha256 = await this.hashFile(archivePath);
+    const artifact = await this.saveLocalArtifact({
+      ownerId: data.ownerId,
+      jobId: data.jobId,
+      modelName: data.modelName,
+      baseModelId: data.baseModelId,
+      format: 'gptq',
+      storagePath: archivePath,
+      fileSizeBytes,
+      sha256,
+    });
+    await this.artifactRepo.update(artifact.id, { quantBits: bits });
+    artifact.quantBits = bits;
+    return artifact;
+  }
+
   private runConversion(executable: string, args: string[]): Promise<void> {
     return new Promise((resolvePromise, reject) => {
       const child = spawn(executable, args, {

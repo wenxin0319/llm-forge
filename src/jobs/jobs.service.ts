@@ -297,6 +297,27 @@ export class JobsService {
               `[artifact] GGUF export failed: ${message}`,
             );
           }
+        } else if (outputFormat === 'gptq') {
+          try {
+            const gptq = await this.artifactsService.createLocalGptqArtifact({
+              ownerId: job.ownerId,
+              jobId: job.id,
+              modelName: job.modelName,
+              baseModelId: job.baseModelId,
+              outputPath: job.outputPath,
+            });
+            await this.pushLog(
+              jobId,
+              `[artifact] Exported quantized GPTQ ${gptq.filename}; sha256=${gptq.sha256}`,
+            );
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            await this.pushLog(
+              jobId,
+              `[artifact] GPTQ export failed: ${message}`,
+            );
+          }
         }
       }
     } else {

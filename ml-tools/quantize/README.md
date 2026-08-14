@@ -121,11 +121,16 @@ quantization preserves the model, same standard as the GGUF verification.
 
 ### Notes / what's still not done
 
-- This verifies the **standalone tool**, not the backend artifact path.
-  `artifacts.service.ts`'s `scheduleQuantization` still simulates GPTQ
-  completion (`fileSizeGb * 0.28` guess, no real file) — wiring this tool in
-  the way `createLocalGgufLoraAdapter`/`createLocalMergedGgufArtifact` wire
-  GGUF is the next step, not done here.
+- This verifies the **standalone tool**, run directly. It is now also wired
+  into the backend — `ArtifactsService.createLocalGptqArtifact` spawns this
+  script when a completed local `full_fine_tune` job requests
+  `outputFormat: 'gptq'`, same pattern as
+  `createLocalGgufLoraAdapter`/`createLocalMergedGgufArtifact` for GGUF —
+  but that wiring is only unit-tested with a mocked subprocess so far, not
+  run end to end against a real job on a GPU the way this standalone run
+  was. `artifacts.service.ts`'s separate `scheduleQuantization` endpoint
+  (for re-quantizing an already-registered artifact, not the job-completion
+  path) still simulates GPTQ completion.
 - Calibration used 64 short synthetic text samples for a fast, verifiable
   run. Production GPTQ calibration typically uses a larger, more
   representative corpus (e.g. C4 or wikitext2 samples) — this is enough to

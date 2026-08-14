@@ -378,3 +378,193 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
     expect(mockedSpawn).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('ArtifactsService GPTQ export', () => {
+  const originalRoot = process.env.TRAINING_OUTPUT_ROOT;
+  const originalScript = process.env.GPTQ_QUANTIZE_SCRIPT;
+  let root: string;
+  let outputPath: string;
+
+  const repo = () =>
+    ({
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => ({ ...value, id: 'artifact-1' })),
+      update: jest.fn(async () => ({ affected: 1 })),
+    }) as unknown as Repository<Artifact>;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'llm-forge-gptq-'));
+    process.env.TRAINING_OUTPUT_ROOT = root;
+    outputPath = join(root, 'job-1');
+    mkdirSync(outputPath);
+    writeFileSync(join(outputPath, 'config.json'), '{}');
+    // Any existing file satisfies the "tooling installed" check without
+    // depending on a real (CUDA-only, not runnable in CI) gptqmodel install.
+    process.env.GPTQ_QUANTIZE_SCRIPT = join(outputPath, 'config.json');
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    if (originalRoot === undefined) delete process.env.TRAINING_OUTPUT_ROOT;
+    else process.env.TRAINING_OUTPUT_ROOT = originalRoot;
+    if (originalScript === undefined) delete process.env.GPTQ_QUANTIZE_SCRIPT;
+    else process.env.GPTQ_QUANTIZE_SCRIPT = originalScript;
+    mockedSpawn.mockReset();
+  });
+
+  const mockSuccessfulQuantizeAndPackage = () => {
+    mockedSpawn.mockImplementation((exe: string, args: string[]) => {
+      const child = new EventEmitter() as any;
+      child.stderr = new EventEmitter();
+      if (exe === 'tar') {
+        // tar -czf <archivePath> -C <quantDir> .
+        writeFileSync(args[1], 'tarball-bytes');
+      } else {
+        // python gptq_quantize.py --model-dir ... --out <quantDir> ...
+        const outDir = args[args.indexOf('--out') + 1];
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, 'config.json'), '{}');
+      }
+      setImmediate(() => child.emit('exit', 0));
+      return child;
+    });
+  };
+
+  it('registers a real GPTQ artifact packaged as a tarball', async () => {
+    mockSuccessfulQuantizeAndPackage();
+
+    const artifact = await new ArtifactsService(repo()).createLocalGptqArtifact(
+      {
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+      },
+    );
+
+    expect(artifact.format).toBe('gptq');
+    expect(artifact.filename).toBe('gptq-int4.tar.gz');
+    expect(artifact.fileSizeBytes).toBe('tarball-bytes'.length);
+    expect(artifact.quantBits).toBe(4);
+    expect(artifact.downloadUrl).toBe('/api/v1/artifacts/artifact-1/download');
+    expect(mockedSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it('honors a custom bits value in the recorded quantBits', async () => {
+    mockSuccessfulQuantizeAndPackage();
+
+    const artifact = await new ArtifactsService(repo()).createLocalGptqArtifact(
+      {
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+        bits: 8,
+      },
+    );
+
+    expect(artifact.quantBits).toBe(8);
+    const quantizeCallArgs = mockedSpawn.mock.calls[0][1] as string[];
+    expect(quantizeCallArgs).toContain('8');
+  });
+
+  it('rejects when the checkpoint has no config.json', async () => {
+    rmSync(join(outputPath, 'config.json'));
+
+    await expect(
+      new ArtifactsService(repo()).createLocalGptqArtifact({
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+      }),
+    ).rejects.toThrow('Merged model checkpoint was not created');
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('rejects output paths outside the configured output root', async () => {
+    await expect(
+      new ArtifactsService(repo()).createLocalGptqArtifact({
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath: join(root, '..', 'outside'),
+      }),
+    ).rejects.toThrow('outside the configured output root');
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('reports missing tooling instead of spawning a nonexistent script', async () => {
+    process.env.GPTQ_QUANTIZE_SCRIPT = join(outputPath, 'does-not-exist.py');
+
+    await expect(
+      new ArtifactsService(repo()).createLocalGptqArtifact({
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+      }),
+    ).rejects.toThrow('GPTQ quantization tooling is not installed');
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the calibration stderr when quantization exits non-zero', async () => {
+    mockedSpawn.mockImplementation(() => {
+      const child = new EventEmitter() as any;
+      child.stderr = new EventEmitter();
+      setImmediate(() => {
+        child.stderr.emit('data', Buffer.from('CUDA out of memory'));
+        child.emit('exit', 1);
+      });
+      return child;
+    });
+
+    await expect(
+      new ArtifactsService(repo()).createLocalGptqArtifact({
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+      }),
+    ).rejects.toThrow('CUDA out of memory');
+    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the tar stderr when packaging exits non-zero', async () => {
+    let call = 0;
+    mockedSpawn.mockImplementation((exe: string, args: string[]) => {
+      call += 1;
+      const child = new EventEmitter() as any;
+      child.stderr = new EventEmitter();
+      if (call === 1) {
+        const outDir = args[args.indexOf('--out') + 1];
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(join(outDir, 'config.json'), '{}');
+        setImmediate(() => child.emit('exit', 0));
+      } else {
+        setImmediate(() => {
+          child.stderr.emit('data', Buffer.from('tar: disk full'));
+          child.emit('exit', 1);
+        });
+      }
+      return child;
+    });
+
+    await expect(
+      new ArtifactsService(repo()).createLocalGptqArtifact({
+        ownerId: 'owner-1',
+        jobId: 'job-1',
+        modelName: 'Test model',
+        baseModelId: 'qwen2.5-7b-instruct',
+        outputPath,
+      }),
+    ).rejects.toThrow('tar: disk full');
+    expect(mockedSpawn).toHaveBeenCalledTimes(2);
+  });
+});
