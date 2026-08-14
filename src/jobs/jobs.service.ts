@@ -38,6 +38,15 @@ export interface MetricsSummary {
   finalValLoss: number | null;
 }
 
+export function computePeakGpuMemGb(metrics: MetricPoint[]): number | null {
+  const memValues = metrics
+    .flatMap((point) => point.gpuMemUsedGb ?? [])
+    .filter((value): value is number => typeof value === 'number');
+  return memValues.length
+    ? parseFloat(Math.max(...memValues).toFixed(1))
+    : null;
+}
+
 @Injectable()
 export class JobsService {
   private readonly metricPollers = new Map<string, NodeJS.Timeout>();
@@ -202,6 +211,7 @@ export class JobsService {
         completedAt,
         totalTrainingSec,
         avgTokensPerSec,
+        peakGpuMemGb: computePeakGpuMemGb(metrics) ?? undefined,
         actualCostUsd,
         logs: [
           ...job.logs,
@@ -459,9 +469,6 @@ export class JobsService {
         const tpsValues = allMetrics
           .map((m) => m.tokensPerSec)
           .filter((value): value is number => value != null);
-        const memValues = allMetrics
-          .flatMap((m) => m.gpuMemUsedGb ?? [])
-          .filter(Boolean);
         const totalTrainingSec = j.startedAt
           ? Math.round((Date.now() - new Date(j.startedAt).getTime()) / 1000)
           : null;
@@ -472,9 +479,7 @@ export class JobsService {
               ),
             )
           : null;
-        const peakGpuMemGb = memValues.length
-          ? parseFloat(Math.max(...memValues).toFixed(1))
-          : null;
+        const peakGpuMemGb = computePeakGpuMemGb(allMetrics);
         const ttftMs = Math.round(180 + Math.random() * 120);
 
         await update({

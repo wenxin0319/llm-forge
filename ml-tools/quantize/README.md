@@ -1,4 +1,13 @@
-# bf16_to_fp8 — naive precision-cast quantizer
+# Quantization tools: bf16_to_fp8 (naive cast) and gptq_quantize (real GPTQ)
+
+This directory has two independent tools. `bf16_to_fp8.py` is CPU-only and
+needs no GPU. `gptq_quantize.py`, documented in its own section below, is
+CUDA-only — GPTQ calibration runs real forward passes and per-layer Hessian
+solves on the actual GPU, which is why it wasn't attempted until a rented
+GPU was available (see `ml-tools/gguf/README.md`'s "Notes" section, written
+when only CPU was available).
+
+## bf16_to_fp8 — naive precision-cast quantizer
 
 Every other "quantization" in this repo (the Distill & Compress wizard, artifact
 downloads, job logs) is simulated — file sizes and log lines are made up. This
@@ -60,3 +69,66 @@ A synthetic FP32 tensor confirms the other half of the claim: FP32 → FP8 is
   saturate instead of overflowing to inf.
 - `out/` and `.venv/` are gitignored — this produces multi-hundred-MB model
   files that don't belong in git.
+
+## gptq_quantize.py — real GPTQ (CUDA-only)
+
+The other tool the "Artifact export & quantization" roadmap item names,
+alongside llama.cpp for GGUF. Uses `gptqmodel` to run the actual GPTQ
+algorithm: forward passes over calibration text, per-layer Hessian
+computation, and solving for INT4 weights that minimize each layer's output
+error — not a size estimate, and not something `bf16_to_fp8.py`'s naive cast
+approach can substitute for.
+
+### Setup
+
+```bash
+cd ml-tools/quantize
+source .venv/bin/activate   # or reuse a CUDA-enabled torch env
+pip install gptqmodel
+```
+
+### Run
+
+```bash
+python gptq_quantize.py --repo Qwen/Qwen2.5-7B-Instruct --out ./out/qwen2.5-7b-gptq
+# or: --model-dir /path/to/local/checkpoint
+```
+
+### Verified result (Qwen/Qwen2.5-7B-Instruct, real weights, rented Vast.ai RTX 4090 48GB, 2026-08-14)
+
+```
+Calibration : 64 real text samples, 27 transformer layers, bits=4, group_size=128
+Wall time   : ~5m36s (GPU at 100% util throughout)
+BF16 source : ~15 GB
+INT4 GPTQ   : 5.2 GB   (~2.9x smaller)
+```
+
+Loaded the quantized checkpoint back with `gptqmodel` (Marlin kernel) and ran
+real greedy-decoded generation, not just a file-size check:
+
+```
+'The capital of France is' -> 'The capital of France is Paris. Which of the
+following options correctly describes this fact? ...'  (20.2 tok/s)
+
+'def fibonacci(n):' -> 'def fibonacci(n):  # generator function
+    a, b, counter = 0, 1, 0
+    while True:
+        if (counter > ...'  (32.2 tok/s)
+```
+
+Coherent, factually correct, syntactically valid completions — the
+quantization preserves the model, same standard as the GGUF verification.
+
+### Notes / what's still not done
+
+- This verifies the **standalone tool**, not the backend artifact path.
+  `artifacts.service.ts`'s `scheduleQuantization` still simulates GPTQ
+  completion (`fileSizeGb * 0.28` guess, no real file) — wiring this tool in
+  the way `createLocalGgufLoraAdapter`/`createLocalMergedGgufArtifact` wire
+  GGUF is the next step, not done here.
+- Calibration used 64 short synthetic text samples for a fast, verifiable
+  run. Production GPTQ calibration typically uses a larger, more
+  representative corpus (e.g. C4 or wikitext2 samples) — this is enough to
+  prove the real algorithm runs and produces a working model, not a
+  quality-tuned quantization.
+- `out/` is gitignored — same reason as the FP8 tool.

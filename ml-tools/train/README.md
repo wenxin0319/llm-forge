@@ -94,8 +94,19 @@ prompt/chosen/rejected for DPO) with `--max-steps 2`:
 - **`metrics.jsonl`** output shape spot-checked against `MetricPoint` in
   `jobs.service.ts` — field names and types match exactly.
 
-Not verified here (needs a real CUDA GPU): QLoRA's actual 4-bit quantized
-training path, Flash Attention 2 (the `flash-attn` package doesn't build on
+## Verified on a real CUDA GPU (2026-08-14, rented Vast.ai RTX 4090 48GB)
+
+- **QLoRA's actual 4-bit quantized training path** — ran for real through the
+  backend API (`TRAINING_EXECUTION_MODE=local`) against
+  `Qwen/Qwen2.5-7B-Instruct` with real `bitsandbytes` 4-bit NF4 quantization,
+  not the CPU guard above. Real per-step loss (`0.18` → `0.11` over 60 steps),
+  real GPU utilization (26–41%) and memory (9.94GB, matching the catalog's
+  `vramRequired.qlora: 10` estimate), a registered checksummed adapter
+  artifact, ~145 tok/s. See `docs/roadmap-status.md` for the full record.
+
+Still not verified here (needs a real CUDA GPU and wasn't exercised in the
+run above): Flash Attention 2 (the `flash-attn` package doesn't build on
 CPU/macOS; the scripts fall back to `sdpa` and print a warning rather than
-silently ignoring the flag), and anything at a scale where CPU training time
-would be prohibitive.
+silently ignoring the flag), `full_fine_tune`/`prefix_tuning`/`dpo_train.py`
+through the real backend API (only QLoRA was run end to end), and anything
+at a scale where CPU training time would be prohibitive.
