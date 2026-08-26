@@ -14,6 +14,7 @@ export enum TrainingMethod {
   LORA = 'lora',
   QLORA = 'qlora',
   PREFIX_TUNING = 'prefix_tuning',
+  DPO = 'dpo',
 }
 
 export enum GpuType {
@@ -97,6 +98,18 @@ export class TrainingConfigDto {
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   useGradientCheckpointing?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'DPO temperature (beta) — only used when method is dpo',
+    default: 0.1,
+    minimum: 0,
+    maximum: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  dpoBeta?: number;
 
   @ApiPropertyOptional({
     description: 'Compression mode for distill/prune jobs',

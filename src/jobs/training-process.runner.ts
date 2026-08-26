@@ -19,7 +19,13 @@ interface RunnerConfig {
   maxSeqLength?: number;
   useFlashAttention?: boolean;
   useGradientCheckpointing?: boolean;
+  dpoBeta?: number;
 }
+
+/** Peft technique DPO training runs on top of — DPO is an alignment
+ * objective, not a parameter-efficiency method, so dpo_train.py always
+ * needs one of full_fine_tune/lora/qlora passed as its own --method. */
+const DPO_PEFT_METHOD = 'lora';
 
 @Injectable()
 export class TrainingProcessRunner {
@@ -38,7 +44,13 @@ export class TrainingProcessRunner {
       throw new Error('job has no allowlisted model source');
 
     const config = job.config as RunnerConfig;
-    const allowedMethods = ['full_fine_tune', 'lora', 'qlora', 'prefix_tuning'];
+    const allowedMethods = [
+      'full_fine_tune',
+      'lora',
+      'qlora',
+      'prefix_tuning',
+      'dpo',
+    ];
     if (!config.method || !allowedMethods.includes(config.method)) {
       throw new Error(
         `unsupported training method: ${config.method || 'missing'}`,
@@ -65,7 +77,12 @@ export class TrainingProcessRunner {
       throw new Error('invalid output path');
     mkdirSync(outputPath, { recursive: true });
 
-    const script = resolve(projectRoot, 'ml-tools/train/sft_train.py');
+    const isDpo = config.method === 'dpo';
+    const script = resolve(
+      projectRoot,
+      isDpo ? 'ml-tools/train/dpo_train.py' : 'ml-tools/train/sft_train.py',
+    );
+    const defaultLearningRate = isDpo ? 5e-6 : 2e-4;
     const args = [
       script,
       '--model',
@@ -73,13 +90,13 @@ export class TrainingProcessRunner {
       '--dataset',
       datasetPath,
       '--method',
-      String(config.method),
+      isDpo ? DPO_PEFT_METHOD : String(config.method),
       '--output-dir',
       outputPath,
       '--epochs',
       String(config.epochs ?? 3),
       '--learning-rate',
-      String(config.learningRate ?? 2e-4),
+      String(config.learningRate ?? defaultLearningRate),
       '--batch-size',
       String(config.batchSize ?? 8),
       '--lora-rank',
@@ -87,6 +104,7 @@ export class TrainingProcessRunner {
       '--max-seq-length',
       String(config.maxSeqLength ?? 1024),
     ];
+    if (isDpo) args.push('--beta', String(config.dpoBeta ?? 0.1));
     if (config.useFlashAttention) args.push('--use-flash-attention');
     if (config.useGradientCheckpointing)
       args.push('--use-gradient-checkpointing');

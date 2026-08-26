@@ -221,7 +221,7 @@ export class JobsService {
       const method = (job.config as { method?: string }).method;
       if (
         job.outputPath &&
-        ['lora', 'qlora', 'prefix_tuning'].includes(method || '')
+        ['lora', 'qlora', 'prefix_tuning', 'dpo'].includes(method || '')
       ) {
         try {
           const artifact = await this.artifactsService.createLocalAdapter({
@@ -240,7 +240,7 @@ export class JobsService {
             .outputFormat;
           if (
             outputFormat === 'gguf' &&
-            ['lora', 'qlora'].includes(method || '')
+            ['lora', 'qlora', 'dpo'].includes(method || '')
           ) {
             try {
               const gguf =

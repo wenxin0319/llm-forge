@@ -58,4 +58,25 @@ describe('TrainingProcessRunner', () => {
       }),
     ).toThrow('unsupported training method');
   });
+
+  it('accepts dpo as a training method', () => {
+    process.env.TRAINING_EXECUTION_MODE = 'local';
+    process.env.TRAINING_DATA_ROOT = '/safe/uploads';
+    const runner = new TrainingProcessRunner();
+    const job = {
+      id: 'job-3',
+      modelSource: 'Qwen/Qwen3-0.6B',
+      datasetPath: '/safe/uploads/prefs.jsonl',
+      config: { method: 'dpo' },
+    } as TrainingJob;
+
+    expect(() =>
+      runner.start(job, {
+        onLog: () => undefined,
+        onExit: () => undefined,
+        onError: () => undefined,
+      }),
+    ).not.toThrow();
+    runner.cancel(job.id);
+  });
 });
