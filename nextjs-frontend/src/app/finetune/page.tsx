@@ -24,6 +24,11 @@ const GPU_TIERS = [
   { id: 'h100-80gb', label: 'H100 80GB', vram: 80, tflops: 989, costPerHr: 5.89 },
 ];
 
+// UI method ids are short/catalog-facing; the backend's TrainingMethod enum
+// spells full fine-tune out. Map at launch time rather than renaming METHODS,
+// since 'full' is also the id used by the model catalog's supportedMethods.
+const BACKEND_METHOD: Record<string, string> = { full: 'full_fine_tune' };
+
 const OUTPUT_FORMATS = [
   { id: 'adapter', label: 'Adapter only', desc: '~30 MB — LoRA weights, requires base model to run' },
   { id: 'merged', label: 'Merged FP16', desc: '~4-70 GB — ready to serve, no base model needed' },
@@ -124,6 +129,8 @@ export default function FinetunePage() {
     } finally { setHfChecking(false); }
   };
 
+  const dpoFormatMismatch = method === 'dpo' && datasetTab === 'upload' && !!detectedFormat && detectedFormat !== 'JSONL DPO';
+
   const gpu = GPU_TIERS.find((g) => g.id === gpuType)!;
   const estimatedHrs = parseFloat(((epochs * 1000000) / (gpu.tflops * 1e12 * 0.4 * 3600) * 1e9).toFixed(2));
   const estimatedCost = parseFloat((estimatedHrs * gpu.costPerHr * gpuCount).toFixed(2));
@@ -152,7 +159,7 @@ export default function FinetunePage() {
       }
       const res = await api.post('/training/launch', {
         modelId: model?.id || 'custom', baseModelId: model?.id, datasetId: dsId,
-        method, gpuType, gpuCount, epochs, batchSize, learningRate: lr,
+        method: BACKEND_METHOD[method] || method, gpuType, gpuCount, epochs, batchSize, learningRate: lr,
         loraRank, maxSeqLength: maxSeqLen, outputFormat,
         useFlashAttention: true, useGradientCheckpointing: true,
       });
@@ -483,11 +490,17 @@ export default function FinetunePage() {
                   <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)' }}>${estimatedCost}</div>
                 </div>
               </div>
+
+              {dpoFormatMismatch && (
+                <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid var(--danger, #ef4444)', borderRadius: 10, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  DPO needs a preference-pairs dataset with <code>prompt</code>, <code>chosen</code>, and <code>rejected</code> fields — this file was detected as <strong>{detectedFormat}</strong>. Go back and upload a JSONL DPO dataset, or switch training methods.
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <button className="btn btn-secondary" onClick={() => setStep(2)}><ChevronLeft size={14} /> Back</button>
-              <button className="btn btn-primary" onClick={handleLaunch} disabled={launching}>
+              <button className="btn btn-primary" onClick={handleLaunch} disabled={launching || dpoFormatMismatch}>
                 {launching ? 'Launching...' : <><Zap size={14} /> Launch Fine-tune</>}
               </button>
             </div>
