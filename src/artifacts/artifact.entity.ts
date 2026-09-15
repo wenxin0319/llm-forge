@@ -49,6 +49,12 @@ export class Artifact {
   @Column({ default: '', select: false })
   storagePath: string;
 
+  @Column({ default: 'local' })
+  storageBackend: 'local' | 's3';
+
+  @Column({ nullable: true, select: false })
+  objectKey: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

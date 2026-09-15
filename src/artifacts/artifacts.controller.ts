@@ -49,13 +49,17 @@ export class ArtifactsController {
   }
 
   @Get(':id/download')
-  @ApiOperation({ summary: 'Download an authenticated local artifact' })
+  @ApiOperation({
+    summary:
+      'Download an artifact: streams from local disk, or 302-redirects to a freshly-signed URL for S3-backed artifacts',
+  })
   async download(
     @Param('id') id: string,
     @Request() req,
     @Res() response: Response,
   ) {
     const file = await this.artifactsService.getDownload(id, req.user.id);
+    if (file.mode === 's3') return response.redirect(file.url);
     return response.download(file.path, file.filename);
   }
 

@@ -6,9 +6,18 @@ import { Repository } from 'typeorm';
 import { Artifact } from './artifact.entity';
 import { ArtifactsService } from './artifacts.service';
 import * as childProcess from 'node:child_process';
+import { ArtifactStorageService } from './artifact-storage.service';
 
 jest.mock('node:child_process', () => ({ spawn: jest.fn() }));
 const mockedSpawn = childProcess.spawn as unknown as jest.Mock;
+
+const fakeStorage = () =>
+  ({
+    isEnabled: jest.fn(() => false),
+    upload: jest.fn(),
+    getSignedDownloadUrl: jest.fn(),
+    delete: jest.fn(),
+  }) as unknown as ArtifactStorageService;
 
 describe('ArtifactsService local adapter registration', () => {
   const originalRoot = process.env.TRAINING_OUTPUT_ROOT;
@@ -35,7 +44,10 @@ describe('ArtifactsService local adapter registration', () => {
       save: jest.fn(async (value) => ({ ...value, id: 'artifact-1' })),
       update: jest.fn(async () => ({ affected: 1 })),
     } as unknown as Repository<Artifact>;
-    const artifact = await new ArtifactsService(repo).createLocalAdapter({
+    const artifact = await new ArtifactsService(
+      repo,
+      fakeStorage(),
+    ).createLocalAdapter({
       ownerId: 'owner-1',
       jobId: 'job-1',
       modelName: 'Test model',
@@ -56,7 +68,7 @@ describe('ArtifactsService local adapter registration', () => {
     const repo = {} as Repository<Artifact>;
 
     await expect(
-      new ArtifactsService(repo).createLocalAdapter({
+      new ArtifactsService(repo, fakeStorage()).createLocalAdapter({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -120,6 +132,7 @@ describe('ArtifactsService GGUF LoRA export', () => {
 
     const artifact = await new ArtifactsService(
       repo(),
+      fakeStorage(),
     ).createLocalGgufLoraAdapter({
       ownerId: 'owner-1',
       jobId: 'job-1',
@@ -139,7 +152,7 @@ describe('ArtifactsService GGUF LoRA export', () => {
     rmSync(join(outputPath, 'adapter_config.json'));
 
     await expect(
-      new ArtifactsService(repo()).createLocalGgufLoraAdapter({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGgufLoraAdapter({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -152,7 +165,7 @@ describe('ArtifactsService GGUF LoRA export', () => {
 
   it('rejects output paths outside the configured output root', async () => {
     await expect(
-      new ArtifactsService(repo()).createLocalGgufLoraAdapter({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGgufLoraAdapter({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -175,7 +188,7 @@ describe('ArtifactsService GGUF LoRA export', () => {
     });
 
     await expect(
-      new ArtifactsService(repo()).createLocalGgufLoraAdapter({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGgufLoraAdapter({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -246,6 +259,7 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
 
     const artifact = await new ArtifactsService(
       repo(),
+      fakeStorage(),
     ).createLocalMergedGgufArtifact({
       ownerId: 'owner-1',
       jobId: 'job-1',
@@ -267,6 +281,7 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
 
     const artifact = await new ArtifactsService(
       repo(),
+      fakeStorage(),
     ).createLocalMergedGgufArtifact({
       ownerId: 'owner-1',
       jobId: 'job-1',
@@ -285,26 +300,30 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
     rmSync(join(outputPath, 'config.json'));
 
     await expect(
-      new ArtifactsService(repo()).createLocalMergedGgufArtifact({
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen3',
-        outputPath,
-      }),
+      new ArtifactsService(repo(), fakeStorage()).createLocalMergedGgufArtifact(
+        {
+          ownerId: 'owner-1',
+          jobId: 'job-1',
+          modelName: 'Test model',
+          baseModelId: 'qwen3',
+          outputPath,
+        },
+      ),
     ).rejects.toThrow('Merged model checkpoint was not created');
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
 
   it('rejects output paths outside the configured output root', async () => {
     await expect(
-      new ArtifactsService(repo()).createLocalMergedGgufArtifact({
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen3',
-        outputPath: join(root, '..', 'outside'),
-      }),
+      new ArtifactsService(repo(), fakeStorage()).createLocalMergedGgufArtifact(
+        {
+          ownerId: 'owner-1',
+          jobId: 'job-1',
+          modelName: 'Test model',
+          baseModelId: 'qwen3',
+          outputPath: join(root, '..', 'outside'),
+        },
+      ),
     ).rejects.toThrow('outside the configured output root');
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
@@ -313,13 +332,15 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
     process.env.GGUF_QUANTIZE_BIN = join(outputPath, 'does-not-exist-bin');
 
     await expect(
-      new ArtifactsService(repo()).createLocalMergedGgufArtifact({
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen3',
-        outputPath,
-      }),
+      new ArtifactsService(repo(), fakeStorage()).createLocalMergedGgufArtifact(
+        {
+          ownerId: 'owner-1',
+          jobId: 'job-1',
+          modelName: 'Test model',
+          baseModelId: 'qwen3',
+          outputPath,
+        },
+      ),
     ).rejects.toThrow('GGUF conversion tooling is not installed');
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
@@ -336,13 +357,15 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
     });
 
     await expect(
-      new ArtifactsService(repo()).createLocalMergedGgufArtifact({
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen3',
-        outputPath,
-      }),
+      new ArtifactsService(repo(), fakeStorage()).createLocalMergedGgufArtifact(
+        {
+          ownerId: 'owner-1',
+          jobId: 'job-1',
+          modelName: 'Test model',
+          baseModelId: 'qwen3',
+          outputPath,
+        },
+      ),
     ).rejects.toThrow('unsupported architecture');
     expect(mockedSpawn).toHaveBeenCalledTimes(1);
   });
@@ -367,13 +390,15 @@ describe('ArtifactsService merged full-fine-tune GGUF export', () => {
     });
 
     await expect(
-      new ArtifactsService(repo()).createLocalMergedGgufArtifact({
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen3',
-        outputPath,
-      }),
+      new ArtifactsService(repo(), fakeStorage()).createLocalMergedGgufArtifact(
+        {
+          ownerId: 'owner-1',
+          jobId: 'job-1',
+          modelName: 'Test model',
+          baseModelId: 'qwen3',
+          outputPath,
+        },
+      ),
     ).rejects.toThrow('quantize failed');
     expect(mockedSpawn).toHaveBeenCalledTimes(2);
   });
@@ -433,15 +458,16 @@ describe('ArtifactsService GPTQ export', () => {
   it('registers a real GPTQ artifact packaged as a tarball', async () => {
     mockSuccessfulQuantizeAndPackage();
 
-    const artifact = await new ArtifactsService(repo()).createLocalGptqArtifact(
-      {
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen2.5-7b-instruct',
-        outputPath,
-      },
-    );
+    const artifact = await new ArtifactsService(
+      repo(),
+      fakeStorage(),
+    ).createLocalGptqArtifact({
+      ownerId: 'owner-1',
+      jobId: 'job-1',
+      modelName: 'Test model',
+      baseModelId: 'qwen2.5-7b-instruct',
+      outputPath,
+    });
 
     expect(artifact.format).toBe('gptq');
     expect(artifact.filename).toBe('gptq-int4.tar.gz');
@@ -454,16 +480,17 @@ describe('ArtifactsService GPTQ export', () => {
   it('honors a custom bits value in the recorded quantBits', async () => {
     mockSuccessfulQuantizeAndPackage();
 
-    const artifact = await new ArtifactsService(repo()).createLocalGptqArtifact(
-      {
-        ownerId: 'owner-1',
-        jobId: 'job-1',
-        modelName: 'Test model',
-        baseModelId: 'qwen2.5-7b-instruct',
-        outputPath,
-        bits: 8,
-      },
-    );
+    const artifact = await new ArtifactsService(
+      repo(),
+      fakeStorage(),
+    ).createLocalGptqArtifact({
+      ownerId: 'owner-1',
+      jobId: 'job-1',
+      modelName: 'Test model',
+      baseModelId: 'qwen2.5-7b-instruct',
+      outputPath,
+      bits: 8,
+    });
 
     expect(artifact.quantBits).toBe(8);
     const quantizeCallArgs = mockedSpawn.mock.calls[0][1] as string[];
@@ -474,7 +501,7 @@ describe('ArtifactsService GPTQ export', () => {
     rmSync(join(outputPath, 'config.json'));
 
     await expect(
-      new ArtifactsService(repo()).createLocalGptqArtifact({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGptqArtifact({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -487,7 +514,7 @@ describe('ArtifactsService GPTQ export', () => {
 
   it('rejects output paths outside the configured output root', async () => {
     await expect(
-      new ArtifactsService(repo()).createLocalGptqArtifact({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGptqArtifact({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -502,7 +529,7 @@ describe('ArtifactsService GPTQ export', () => {
     process.env.GPTQ_QUANTIZE_SCRIPT = join(outputPath, 'does-not-exist.py');
 
     await expect(
-      new ArtifactsService(repo()).createLocalGptqArtifact({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGptqArtifact({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -525,7 +552,7 @@ describe('ArtifactsService GPTQ export', () => {
     });
 
     await expect(
-      new ArtifactsService(repo()).createLocalGptqArtifact({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGptqArtifact({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -557,7 +584,7 @@ describe('ArtifactsService GPTQ export', () => {
     });
 
     await expect(
-      new ArtifactsService(repo()).createLocalGptqArtifact({
+      new ArtifactsService(repo(), fakeStorage()).createLocalGptqArtifact({
         ownerId: 'owner-1',
         jobId: 'job-1',
         modelName: 'Test model',
@@ -566,5 +593,151 @@ describe('ArtifactsService GPTQ export', () => {
       }),
     ).rejects.toThrow('tar: disk full');
     expect(mockedSpawn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ArtifactsService S3-backed storage', () => {
+  const originalRoot = process.env.TRAINING_OUTPUT_ROOT;
+  let root: string;
+  let outputPath: string;
+
+  const repo = () =>
+    ({
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => ({ ...value, id: 'artifact-1' })),
+      update: jest.fn(async () => ({ affected: 1 })),
+      createQueryBuilder: jest.fn(),
+    }) as unknown as Repository<Artifact>;
+
+  const s3Storage = () =>
+    ({
+      isEnabled: jest.fn(() => true),
+      upload: jest.fn(async () => undefined),
+      getSignedDownloadUrl: jest.fn(
+        async (key: string) => `https://bucket.example.com/${key}?signed=1`,
+      ),
+      delete: jest.fn(async () => undefined),
+    }) as unknown as ArtifactStorageService;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'llm-forge-artifact-s3-'));
+    process.env.TRAINING_OUTPUT_ROOT = root;
+    outputPath = join(root, 'job-1');
+    mkdirSync(outputPath);
+    writeFileSync(
+      join(outputPath, 'adapter_model.safetensors'),
+      'adapter-bytes',
+    );
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+    if (originalRoot === undefined) delete process.env.TRAINING_OUTPUT_ROOT;
+    else process.env.TRAINING_OUTPUT_ROOT = originalRoot;
+  });
+
+  it('uploads the artifact to object storage and stores a real presigned URL instead of writing to local disk', async () => {
+    const storage = s3Storage();
+    const artifact = await new ArtifactsService(
+      repo(),
+      storage,
+    ).createLocalAdapter({
+      ownerId: 'owner-1',
+      jobId: 'job-1',
+      modelName: 'Test model',
+      baseModelId: 'qwen3',
+      outputPath,
+    });
+
+    expect(storage.upload).toHaveBeenCalledWith(
+      join(outputPath, 'adapter_model.safetensors'),
+      'artifacts/owner-1/job-1/adapter_model.safetensors',
+    );
+    expect(artifact.storageBackend).toBe('s3');
+    expect(artifact.objectKey).toBe(
+      'artifacts/owner-1/job-1/adapter_model.safetensors',
+    );
+    expect(artifact.downloadUrl).toBe(
+      'https://bucket.example.com/artifacts/owner-1/job-1/adapter_model.safetensors?signed=1',
+    );
+  });
+
+  it('getDownload re-signs a fresh URL for an S3-backed artifact instead of reusing a stored one', async () => {
+    const storage = s3Storage();
+    const getOne = jest.fn(async () => ({
+      id: 'artifact-1',
+      ownerId: 'owner-1',
+      storageBackend: 's3',
+      objectKey: 'artifacts/owner-1/job-1/adapter.gguf',
+      filename: 'adapter.gguf',
+    }));
+    const repoWithQb = {
+      createQueryBuilder: jest.fn(() => ({
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne,
+      })),
+    } as unknown as Repository<Artifact>;
+
+    const service = new ArtifactsService(repoWithQb, storage);
+    const result = await service.getDownload('artifact-1', 'owner-1');
+
+    expect(result).toEqual({
+      mode: 's3',
+      url: 'https://bucket.example.com/artifacts/owner-1/job-1/adapter.gguf?signed=1',
+    });
+    expect(storage.getSignedDownloadUrl).toHaveBeenCalledWith(
+      'artifacts/owner-1/job-1/adapter.gguf',
+      'adapter.gguf',
+    );
+  });
+
+  it('getDownload rejects a download for an artifact owned by someone else', async () => {
+    const storage = s3Storage();
+    const getOne = jest.fn(async () => ({
+      id: 'artifact-1',
+      ownerId: 'owner-1',
+      storageBackend: 's3',
+      objectKey: 'artifacts/owner-1/job-1/adapter.gguf',
+      filename: 'adapter.gguf',
+    }));
+    const repoWithQb = {
+      createQueryBuilder: jest.fn(() => ({
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne,
+      })),
+    } as unknown as Repository<Artifact>;
+
+    const service = new ArtifactsService(repoWithQb, storage);
+    await expect(
+      service.getDownload('artifact-1', 'someone-else'),
+    ).rejects.toThrow();
+    expect(storage.getSignedDownloadUrl).not.toHaveBeenCalled();
+  });
+
+  it('remove() deletes the object from storage for an S3-backed artifact', async () => {
+    const storage = s3Storage();
+    const getOne = jest.fn(async () => ({
+      id: 'artifact-1',
+      ownerId: 'owner-1',
+      storageBackend: 's3',
+      objectKey: 'artifacts/owner-1/job-1/adapter.gguf',
+    }));
+    const repoWithQb = {
+      createQueryBuilder: jest.fn(() => ({
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne,
+      })),
+      delete: jest.fn(async () => undefined),
+    } as unknown as Repository<Artifact>;
+
+    const service = new ArtifactsService(repoWithQb, storage);
+    await service.remove('artifact-1', 'owner-1');
+
+    expect(storage.delete).toHaveBeenCalledWith(
+      'artifacts/owner-1/job-1/adapter.gguf',
+    );
   });
 });

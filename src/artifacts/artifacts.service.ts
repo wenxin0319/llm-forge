@@ -10,12 +10,14 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { basename, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
+import { ArtifactStorageService } from './artifact-storage.service';
 
 @Injectable()
 export class ArtifactsService {
   constructor(
     @InjectRepository(Artifact)
     private readonly artifactRepo: Repository<Artifact>,
+    private readonly storage: ArtifactStorageService,
   ) {}
 
   async create(data: Partial<Artifact>): Promise<Artifact> {
@@ -362,6 +364,33 @@ export class ArtifactsService {
     fileSizeBytes: number;
     sha256: string;
   }): Promise<Artifact> {
+    const filename = basename(fields.storagePath);
+
+    if (this.storage.isEnabled()) {
+      const objectKey = `artifacts/${fields.ownerId}/${fields.jobId}/${filename}`;
+      await this.storage.upload(fields.storagePath, objectKey);
+      const downloadUrl = await this.storage.getSignedDownloadUrl(
+        objectKey,
+        filename,
+      );
+      const artifact = this.artifactRepo.create({
+        ownerId: fields.ownerId,
+        jobId: fields.jobId,
+        modelName: fields.modelName,
+        baseModelId: fields.baseModelId,
+        format: fields.format,
+        status: 'ready',
+        filename,
+        fileSizeBytes: fields.fileSizeBytes,
+        fileSizeGb: Number((fields.fileSizeBytes / 1024 ** 3).toFixed(6)),
+        sha256: fields.sha256,
+        storageBackend: 's3',
+        objectKey,
+        downloadUrl,
+      });
+      return this.artifactRepo.save(artifact);
+    }
+
     const artifact = this.artifactRepo.create({
       ownerId: fields.ownerId,
       jobId: fields.jobId,
@@ -369,8 +398,9 @@ export class ArtifactsService {
       baseModelId: fields.baseModelId,
       format: fields.format,
       status: 'ready',
-      filename: basename(fields.storagePath),
+      filename,
       storagePath: fields.storagePath,
+      storageBackend: 'local',
       fileSizeBytes: fields.fileSizeBytes,
       fileSizeGb: Number((fields.fileSizeBytes / 1024 ** 3).toFixed(6)),
       sha256: fields.sha256,
@@ -384,17 +414,34 @@ export class ArtifactsService {
     return saved;
   }
 
+  /** Local artifacts stream from disk through this backend; S3-backed ones
+   * redirect to a freshly-signed URL so the link is never a stale, expired
+   * one served from a stored column. */
   async getDownload(
     id: string,
     ownerId: string,
-  ): Promise<{ path: string; filename: string }> {
+  ): Promise<
+    | { mode: 'local'; path: string; filename: string }
+    | { mode: 's3'; url: string }
+  > {
     const artifact = await this.artifactRepo
       .createQueryBuilder('artifact')
-      .addSelect('artifact.storagePath')
+      .addSelect(['artifact.storagePath', 'artifact.objectKey'])
       .where('artifact.id = :id', { id })
       .getOne();
     if (!artifact) throw new NotFoundException('Artifact not found');
     if (artifact.ownerId !== ownerId) throw new ForbiddenException();
+
+    if (artifact.storageBackend === 's3') {
+      if (!artifact.objectKey)
+        throw new NotFoundException('Artifact object key is unavailable');
+      const url = await this.storage.getSignedDownloadUrl(
+        artifact.objectKey,
+        artifact.filename || 'artifact',
+      );
+      return { mode: 's3', url };
+    }
+
     const storageRoot = resolve(
       process.env.TRAINING_OUTPUT_ROOT ||
         resolve(process.cwd(), 'ml-tools/train/out/jobs'),
@@ -409,6 +456,7 @@ export class ArtifactsService {
       throw new NotFoundException('Artifact file is unavailable');
     }
     return {
+      mode: 'local',
       path: artifact.storagePath,
       filename: artifact.filename || basename(artifact.storagePath),
     };
@@ -467,7 +515,16 @@ export class ArtifactsService {
   }
 
   async remove(id: string, ownerId: string): Promise<void> {
-    await this.findOne(id, ownerId);
+    const artifact = await this.artifactRepo
+      .createQueryBuilder('artifact')
+      .addSelect('artifact.objectKey')
+      .where('artifact.id = :id', { id })
+      .getOne();
+    if (!artifact) throw new NotFoundException('Artifact not found');
+    if (artifact.ownerId !== ownerId) throw new ForbiddenException();
+    if (artifact.storageBackend === 's3' && artifact.objectKey) {
+      await this.storage.delete(artifact.objectKey);
+    }
     await this.artifactRepo.delete(id);
   }
 

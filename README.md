@@ -14,10 +14,14 @@
 The public demo defaults to **simulated** training. The backend now has an
 opt-in local process worker (`TRAINING_EXECUTION_MODE=local`) that launches
 the approved Hugging Face script, streams logs/metrics, and handles process
-cancellation and failure. The backend path is not yet verified end-to-end on
-a rented CUDA worker, and it does not yet upload artifacts to
-persistent object storage. Local worker adapters are registered with SHA-256
-and available through an authenticated local download endpoint. A standalone
+cancellation and failure. Local worker adapters are registered with SHA-256
+and available through an authenticated local download endpoint by default,
+or — with `ARTIFACT_STORAGE_MODE=s3` set — uploaded to real S3-compatible
+object storage and served as expiring presigned download URLs (verified
+against a self-hosted MinIO container: real upload, real presigned download,
+byte-identical checksum; not yet run against production AWS S3 or through a
+full training job — see [`docs/roadmap-status.md`](docs/roadmap-status.md)).
+A standalone
 CUDA QLoRA run has been completed on a rented Vast.ai A100. v0.1 did not
 include a documented rented-GPU result; v0.2 publishes this real standalone
 test. Its submitted benchmark scores and loss curve are measured run results
