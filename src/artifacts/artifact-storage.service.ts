@@ -2,11 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createReadStream, statSync } from 'node:fs';
 import {
   S3Client,
-  PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Upload } from '@aws-sdk/lib-storage';
 
 /**
  * Real S3-compatible object storage for training artifacts, opt-in via
@@ -55,21 +55,29 @@ export class ArtifactStorageService {
     return this.client;
   }
 
-  /** Streams a local file to the bucket under `key`. Single-request PUT —
-   * fine up to S3's 5GB single-PUT limit; a merged full-fine-tune checkpoint
-   * approaching that would need multipart upload, not yet implemented. */
+  /** Streams a local file to the bucket under `key`. Uses @aws-sdk/lib-storage's
+   * `Upload` helper, which buffers the stream into parts and automatically
+   * switches to S3 multipart upload once the data crosses `partSize` — so a
+   * merged full-fine-tune checkpoint past S3's 5GB single-PUT limit still
+   * uploads correctly, while small artifacts still go out as a single PUT. */
   async upload(localPath: string, key: string): Promise<void> {
     const bucket = this.getBucket();
     const { size } = statSync(localPath);
-    await this.getClient().send(
-      new PutObjectCommand({
+    const upload = new Upload({
+      client: this.getClient(),
+      // 8 parts in flight at once, 8MB each — comfortably above the 5MB S3
+      // minimum part size while keeping memory use for concurrent artifact
+      // uploads bounded.
+      queueSize: 8,
+      partSize: 8 * 1024 * 1024,
+      params: {
         Bucket: bucket,
         Key: key,
         Body: createReadStream(localPath),
-        ContentLength: size,
-      }),
-    );
-    this.logger.log(`Uploaded ${localPath} to s3://${bucket}/${key}`);
+      },
+    });
+    await upload.done();
+    this.logger.log(`Uploaded ${localPath} (${size} bytes) to s3://${bucket}/${key}`);
   }
 
   /** Real expiring presigned GET URL — generated fresh on every call so it
