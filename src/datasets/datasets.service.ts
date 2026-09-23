@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dataset } from './dataset.entity';
 import { CreateDatasetDto, ImportHuggingFaceDto } from './datasets.dto';
-import { parseDataset } from './dataset-parsers';
+import { parseDataset, ParseResult } from './dataset-parsers';
 
 @Injectable()
 export class DatasetsService {
@@ -38,7 +38,16 @@ export class DatasetsService {
   }
 
   private async processUpload(id: string, type: string, filePath: string) {
-    const result = await parseDataset(type, filePath);
+    // Every known parser now resolves gracefully instead of throwing (see
+    // dataset-parsers.ts), but this guards against any future parser — or an
+    // unanticipated failure mode in an existing one — leaving the dataset
+    // stuck at status 'processing' forever instead of surfacing as an error.
+    let result: ParseResult;
+    try {
+      result = await parseDataset(type, filePath);
+    } catch (err) {
+      result = { recordCount: 0, errorMessage: `Failed to process dataset: ${(err as Error).message}` };
+    }
     const failed = result.recordCount === 0 && !!result.errorMessage;
     await this.datasetRepo.update(id, {
       status: failed ? 'error' : 'ready',
@@ -55,8 +64,15 @@ export class DatasetsService {
     let hfDescription = '';
     let statsError: string | undefined;
 
-    // Validate repo exists and fetch basic metadata
-    const metaRes = await fetch(`https://huggingface.co/api/datasets/${dto.repoId}`);
+    // Validate repo exists and fetch basic metadata. A network-level failure
+    // here (DNS, timeout, connection reset) would otherwise throw uncaught
+    // and surface as an opaque 500 instead of a clear, actionable message.
+    let metaRes: Response;
+    try {
+      metaRes = await fetch(`https://huggingface.co/api/datasets/${dto.repoId}`);
+    } catch (e) {
+      throw new BadRequestException(`Could not reach HuggingFace: ${(e as Error).message}`);
+    }
     if (!metaRes.ok) throw new BadRequestException(`HuggingFace dataset '${dto.repoId}' not found`);
     const meta = (await metaRes.json()) as { description?: string; cardData?: { description?: string } };
     hfDescription = meta.description || meta.cardData?.description || '';

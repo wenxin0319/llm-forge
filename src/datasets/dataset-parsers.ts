@@ -21,21 +21,29 @@ function detectJsonlRecordFormat(obj: unknown): string {
 
 /** Streams a JSONL file line by line — never loads the whole file into memory. */
 export async function parseJsonl(filePath: string): Promise<ParseResult> {
-  const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
   let valid = 0;
   let invalid = 0;
   let detectedFormat: string | undefined;
 
-  for await (const raw of rl) {
-    const line = raw.trim();
-    if (!line) continue;
-    try {
-      const obj = JSON.parse(line);
-      valid++;
-      if (!detectedFormat) detectedFormat = detectJsonlRecordFormat(obj);
-    } catch {
-      invalid++;
+  // A missing/unreadable file (ENOENT, EACCES, mid-read I/O failure) makes the
+  // underlying stream emit 'error', which the readline async iterator surfaces
+  // as a rejection — catch it here so callers get a graceful ParseResult
+  // instead of an unhandled rejection, matching parseCsv/parseParquet/parseText.
+  try {
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+    for await (const raw of rl) {
+      const line = raw.trim();
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line);
+        valid++;
+        if (!detectedFormat) detectedFormat = detectJsonlRecordFormat(obj);
+      } catch {
+        invalid++;
+      }
     }
+  } catch (err) {
+    return { recordCount: valid, errorMessage: `Could not read file: ${(err as Error).message}` };
   }
 
   const total = valid + invalid;
@@ -98,10 +106,14 @@ export async function parseParquet(filePath: string): Promise<ParseResult> {
 
 /** Plain text — counts non-blank lines as "records" (e.g. one prompt per line). */
 export async function parseText(filePath: string): Promise<ParseResult> {
-  const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
   let count = 0;
-  for await (const raw of rl) {
-    if (raw.trim()) count++;
+  try {
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+    for await (const raw of rl) {
+      if (raw.trim()) count++;
+    }
+  } catch (err) {
+    return { recordCount: count, errorMessage: `Could not read file: ${(err as Error).message}` };
   }
   if (count === 0) return { recordCount: 0, errorMessage: 'File is empty' };
   return { recordCount: count };

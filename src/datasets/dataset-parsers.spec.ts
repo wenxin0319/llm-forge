@@ -57,8 +57,10 @@ describe('dataset-parsers', () => {
       expect(result).toEqual({ recordCount: 0, errorMessage: 'File is empty' });
     });
 
-    it('rejects a missing file without throwing', async () => {
-      await expect(parseJsonl(path.join(dir, 'missing.jsonl'))).rejects.toThrow(/ENOENT/);
+    it('resolves with an error instead of rejecting when the file does not exist', async () => {
+      const result = await parseJsonl(path.join(dir, 'missing.jsonl'));
+      expect(result.recordCount).toBe(0);
+      expect(result.errorMessage).toContain('Could not read file');
     });
   });
 
@@ -104,6 +106,12 @@ describe('dataset-parsers', () => {
       const file = write('empty.txt', '');
       const result = await parseText(file);
       expect(result).toEqual({ recordCount: 0, errorMessage: 'File is empty' });
+    });
+
+    it('resolves with an error instead of rejecting when the file does not exist', async () => {
+      const result = await parseText(path.join(dir, 'missing.txt'));
+      expect(result.recordCount).toBe(0);
+      expect(result.errorMessage).toContain('Could not read file');
     });
   });
 
