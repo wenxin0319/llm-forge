@@ -4,9 +4,11 @@ import {
   ForbiddenException,
   Inject,
   forwardRef,
+  OnModuleInit,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { TrainingJob } from './job.entity';
 import { ArtifactsService } from '../artifacts/artifacts.service';
 import { TrainingProcessRunner } from './training-process.runner';
@@ -47,8 +49,14 @@ export function computePeakGpuMemGb(metrics: MetricPoint[]): number | null {
     : null;
 }
 
+/** Statuses a job can be in while actively running — anything still in one
+ * of these when the backend starts up was orphaned by a previous process
+ * exit (see `recoverInterruptedJobs`). */
+const IN_PROGRESS_STATUSES = ['queued', 'preprocessing', 'training'];
+
 @Injectable()
-export class JobsService {
+export class JobsService implements OnModuleInit {
+  private readonly logger = new Logger(JobsService.name);
   private readonly metricPollers = new Map<string, NodeJS.Timeout>();
 
   constructor(
@@ -59,6 +67,69 @@ export class JobsService {
     private readonly processRunner: TrainingProcessRunner,
     private readonly gpuMetricsService: GpuMetricsService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.recoverInterruptedJobs();
+  }
+
+  /**
+   * Runs once at backend startup. Any job still in a non-terminal status
+   * (queued/preprocessing/training) was orphaned by a previous process
+   * exit: simulated jobs lose their in-memory setTimeout chain, and real
+   * jobs lose `metricPollers`/`TrainingProcessRunner`'s in-memory process
+   * map — but a spawned child process is *not* killed just because its
+   * parent (this backend) exited, so it can keep running unmonitored,
+   * burning GPU time nobody can see or cancel through the API anymore.
+   *
+   * This does not attempt to resume a job — there is no reliable way to
+   * recover the true exit code or final metrics of a process this instance
+   * never parented. Instead it fails the job cleanly, best-effort
+   * terminates a still-alive orphaned process, and records why, so nothing
+   * is left silently "running" forever.
+   */
+  private async recoverInterruptedJobs(): Promise<void> {
+    const stuck = await this.jobRepo.find({
+      where: { status: In(IN_PROGRESS_STATUSES) },
+    });
+    if (stuck.length === 0) return;
+
+    for (const job of stuck) {
+      if (job.processPid) {
+        try {
+          process.kill(job.processPid, 'SIGTERM');
+          this.logger.warn(
+            `Job ${job.id} was still running as pid ${job.processPid} after a backend restart — sent SIGTERM`,
+          );
+        } catch {
+          // Already exited — nothing to clean up.
+        }
+      }
+      const completedAt = new Date();
+      const totalTrainingSec = job.startedAt
+        ? Math.round(
+            (completedAt.getTime() - new Date(job.startedAt).getTime()) /
+              1000,
+          )
+        : 0;
+      const hourlyRate =
+        job.estimatedHours > 0
+          ? job.estimatedCostUsd / job.estimatedHours
+          : 0;
+      const actualCostUsd = Number(
+        ((totalTrainingSec / 3600) * hourlyRate).toFixed(4),
+      );
+      await this.jobRepo.update(job.id, {
+        status: 'failed',
+        completedAt,
+        totalTrainingSec,
+        actualCostUsd,
+        logs: [
+          ...job.logs,
+          '[worker] Training was interrupted by a backend restart and could not be resumed automatically.',
+        ],
+      });
+    }
+  }
 
   async create(
     ownerId: string,
@@ -102,7 +173,10 @@ export class JobsService {
         outputPath,
       });
       const pid = this.processRunner.getPid(job.id);
-      if (pid) this.gpuMetricsService.registerActiveJob(job.id, pid);
+      if (pid) {
+        this.gpuMetricsService.registerActiveJob(job.id, pid);
+        await this.jobRepo.update(job.id, { processPid: pid });
+      }
       this.startMetricPolling(job.id, outputPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

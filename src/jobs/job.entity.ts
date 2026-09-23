@@ -91,6 +91,9 @@ export class TrainingJob {
   @Column({ nullable: true })
   ttftMs: number;
 
+  @Column({ type: 'int', nullable: true })
+  processPid: number;
+
   @Column({ nullable: true })
   startedAt: Date;
 
